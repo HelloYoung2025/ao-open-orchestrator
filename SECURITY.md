@@ -1,34 +1,34 @@
-# Security Policy
+# 安全策略
 
-## Supported Versions
+[English](SECURITY.en.md)
 
-Only the current `main` branch is supported during the alpha period.
+## 支持版本
 
-## Reporting a Vulnerability
+alpha 阶段只支持当前 `main` 分支。
 
-Please open a GitHub security advisory or a private issue with:
+## 漏洞报告
 
-- affected commit;
-- reproduction steps;
-- expected fail-closed result;
-- observed unsafe result;
-- relevant state/proposal snippets with secrets removed.
+请通过 GitHub security advisory 或私密 issue 提交，并包含：
 
-## Threat Model
+- 受影响 commit；
+- 复现步骤；
+- 预期的 fail-closed 结果；
+- 实际观察到的不安全结果；
+- 已脱敏的 state/proposal 片段。
 
-The project is designed around local-first orchestration, not remote trust. It
-assumes adapters, desktop bridges, and subscription CLIs are profile-owned and
-must prove their outputs through local artifacts.
+## 威胁模型
 
-The state writer rejects:
+本项目围绕 local-first orchestration 设计，不把远端服务或外部 adapter 的自声明当成信任根。adapter、桌面桥、本地订阅 CLI 都属于 profile 层；它们的输出必须通过本地 artifact 和 state writer 校验后才进入 canonical state。
 
-- self-declared external-review actors without trusted caller identity;
-- GPT Pro receipts that are not bound to package hash, nonce, artifact hash, and
-  gate proposal;
-- artifact refs outside `artifact:reports/...`;
-- unsupported state schema or contract versions;
-- unknown action vocabulary;
-- non-canonical roots.
+state writer 会拒绝：
 
-Do not publish raw `.omx` state, local transcripts, desktop conversation ids,
-session ids, account-bound logs, or machine-specific paths.
+- 没有可信 caller identity 的自声明外部审查 actor；
+- 没有绑定 package hash、nonce、artifact hash、gate proposal 的 GPT Pro receipt；
+- `artifact:reports/...` 之外的 artifact ref；
+- 不支持的 state schema 或 contract version；
+- 未知 action vocabulary；
+- non-canonical root。
+
+`AO_CALLER_TYPE` 和 `AO_SESSION_ID` 是本地绑定提示，不是通用认证系统。不要把 `ao-state-writer`、`gpt-pro-actuate` 或 adapter 命令直接暴露成网络服务；如果必须远程调用，请先增加独立认证、授权、审计和 OS-level 隔离。
+
+请不要公开 raw `.omx` state、本地 transcript、桌面对话 id、session id、账号绑定日志、机器专属路径或任何 secret。

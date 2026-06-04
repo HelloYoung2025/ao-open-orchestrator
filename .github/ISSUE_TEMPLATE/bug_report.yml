@@ -1,0 +1,54 @@
+name: Bug report / 缺陷报告
+description: 报告 fail-closed、receipt、compat 或文档问题
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        请不要上传 secret、raw transcript、账号绑定日志、本机路径或私有运行状态。
+
+        English: do not upload secrets, raw transcripts, account-bound logs, machine-specific paths, or private runtime state.
+  - type: input
+    id: version
+    attributes:
+      label: Commit / Version
+      description: 受影响 commit 或版本。
+      placeholder: "e.g. 18dbd3b"
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: 问题描述 / Problem
+      description: 发生了什么？预期结果是什么？
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: 复现步骤 / Reproduction
+      description: 用已脱敏步骤说明如何复现。
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: 脱敏证据 / Sanitized evidence
+      description: 可贴 state/proposal 片段，但必须先移除 secret、本机路径、raw transcript 和账号绑定信息。
+    validations:
+      required: false
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area / 影响区域
+      options:
+        - state-writer
+        - compatibility/preflight
+        - receipt contract
+        - adapter/profile transport
+        - public-safety scan
+        - documentation
+        - other
+    validations:
+      required: true

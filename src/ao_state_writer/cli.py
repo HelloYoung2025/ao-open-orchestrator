@@ -1085,7 +1085,7 @@ def _run_gpt_pro_actuator_cli(
             job=job,
             proposal_id=proposal_id,
             reason=str(bridge_result.get("reason") or bridge_result.get("result") or "bridge_failed"),
-            detail=str(bridge_result.get("detail") or bridge_result.get("stderr") or bridge_result.get("stdout") or ""),
+            detail=str(bridge_result.get("detail") or ""),
             expected_package_sha=str(expected_package_sha),
         )
 
@@ -1316,8 +1316,10 @@ def _run_gpt_pro_bridge(
             "result": "bridge_failed",
             "reason": "bridge_command_failed",
             "returncode": completed.returncode,
-            "stdout": completed.stdout,
-            "stderr": completed.stderr,
+            "stdout_sha256": hashlib.sha256(completed.stdout.encode("utf-8", errors="replace")).hexdigest(),
+            "stderr_sha256": hashlib.sha256(completed.stderr.encode("utf-8", errors="replace")).hexdigest(),
+            "stdout_bytes": len(completed.stdout.encode("utf-8", errors="replace")),
+            "stderr_bytes": len(completed.stderr.encode("utf-8", errors="replace")),
         }
         try:
             payload = json.loads(completed.stdout)
@@ -1325,14 +1327,19 @@ def _run_gpt_pro_bridge(
             payload = None
         if isinstance(payload, dict):
             failure["reason"] = str(payload.get("error") or payload.get("reason") or "bridge_command_failed")
-            for key in ("error", "artifact_path", "stdout", "stderr"):
+            for key in ("error", "artifact_path"):
                 if key in payload:
                     failure[f"bridge_{key}"] = payload[key]
         return failure, 3
     try:
         payload = json.loads(completed.stdout)
     except json.JSONDecodeError as exc:
-        return {"result": "invalid_bridge_output", "detail": str(exc), "stdout": completed.stdout}, 3
+        return {
+            "result": "invalid_bridge_output",
+            "detail": str(exc),
+            "stdout_sha256": hashlib.sha256(completed.stdout.encode("utf-8", errors="replace")).hexdigest(),
+            "stdout_bytes": len(completed.stdout.encode("utf-8", errors="replace")),
+        }, 3
     if not isinstance(payload, dict):
         return {"result": "invalid_bridge_output", "detail": "bridge output must be a JSON object"}, 3
     if payload.get("ok") is not True:

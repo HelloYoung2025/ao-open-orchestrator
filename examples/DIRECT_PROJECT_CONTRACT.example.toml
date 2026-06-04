@@ -1,5 +1,10 @@
 version = 1
 
+# Schematic example only. Align field names, action vocabulary, and required
+# values with the target project's private contract before use.
+# 以下示例仅用于结构说明；使用前请先与目标项目的私有契约对齐字段名、
+# action vocabulary 和必填值。
+
 [ao_clone_isolation]
 # Replace this with the absolute path of the active project root in a private
 # profile. Do not commit machine-specific values to a public repository.
@@ -35,5 +40,13 @@ codex_cc_receipt_requires = [
 ]
 
 [transports]
+# Descriptive flags for humans/profile tooling. The current Python core does
+# not enforce these keys directly.
 api_transport_allowed = false
 desktop_or_browser_adapter_required = true
+
+[review_policy]
+# Required for the real GPT Pro actuation path. This example uses module
+# invocation so users do not need a separate console script. Replace it with a
+# private profile command that matches your environment.
+gpt_pro_desktop_actuator_command = "python -m ao_state_writer.gpt_pro_desktop_bridge"

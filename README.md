@@ -1,56 +1,47 @@
 # AO Open Orchestrator
 
-[简体中文](README.zh-CN.md)
+[English](README.en.md)
 
-AO Open Orchestrator is a reference implementation of a fail-closed,
-repair-capable orchestration loop for agentic project execution.
+AO Open Orchestrator 是一个可审计、fail-closed、可持续 repair 的编排循环参考实现，用于让 agentic 项目执行在安全边界内推进。
 
-The core idea is deliberately small:
+它的核心故意保持很小：
 
-- one canonical state writer;
-- explicit action vocabulary;
-- typed blockers instead of silent stalls;
-- receipt-bound external review;
-- profile-owned transports for local tools, desktop apps, or subscription CLIs;
-- compatibility checks that fail closed when schema, contract, caller identity,
-  or root identity changes.
+- 一个唯一的 canonical state writer；
+- 显式 action vocabulary；
+- typed blocker，而不是静默停住；
+- 绑定 receipt 的外部审查；
+- transport 由 profile/adapter 拥有，比如本地 CLI、浏览器自动化、桌面 adapter；
+- schema、contract、caller identity、root identity 变化时 fail-closed 的兼容边界。
 
-This repository is the public-safe core. It excludes private runtime state,
-local receipts, local transcripts, account-bound desktop automation, and
-machine-specific paths.
+这个仓库是 public-safe core。它不包含私有运行状态、本地 receipt、本地 transcript、账号绑定的桌面自动化证据或机器专属路径。
 
-## What This Is
+## 它是什么
 
-AO Open Orchestrator is not another scheduler. It expects an existing runtime
-to wake or poke the loop. On each tick, `ao-state-writer` reconciles canonical
-state and returns exactly one of:
+AO Open Orchestrator 不是另一个 scheduler。它假设外层 AO-like runtime 负责 wake/poke；在 runtime 控制面内，每一次 tick 调用 `ao-state-writer` 后，都应落入三类结果之一：
 
-- continue with a supported action;
-- enter typed repair or convergence;
-- stop at an explicit owner-only gate.
+- 继续执行一个受支持的 action；
+- 进入 typed repair 或 convergence；
+- 停在明确 gate。
 
-The intended unattended guarantee is: no silent stop. Unknown actions,
-unsupported contract versions, stale schema versions, mismatched roots, missing
-review receipts, and unauthenticated callers become explicit machine-readable
-blockers.
+无人值守的目标不是“绕过所有阻塞”，而是在 runtime 控制面内避免静默停住。未知 action、未知 contract version、过期 schema、root 不匹配、缺失 review receipt、caller 未授权，都会变成机器可读的明确 blocker。大多数 gate 是 owner-proxy/orchestrator gate；只有 master plan 修改、破坏性操作等明确 human-only action 才需要当前 human owner。宿主进程退出、系统休眠、外部服务失联等 runtime 外问题仍需要外层 supervisor 恢复。
 
-## What This Is Not
+## 它不是什么
 
-- It is not an OpenAI API wrapper.
-- It is not a queue, daemon, or second state source.
-- It does not ship a universal ChatGPT Desktop controller.
-- It does not grant authority to modify a user's master plan or destructive
-  operations without a current owner gate.
+- 它不是 OpenAI API wrapper。
+- 它不是 queue、daemon 或第二状态源。
+- 它不内置一个对所有机器都安全可用的 ChatGPT Desktop 控制器；仓库只提供可选 reference adapter。
+- 它不会在没有当前 owner/orchestrator gate 的情况下授权修改 master plan 或执行破坏性操作。
 
-## Install
+## 安装
 
 ```bash
 python3 -m venv .venv
 . .venv/bin/activate
+python -m pip install --upgrade pip setuptools
 python -m pip install -e ".[dev]"
 ```
 
-## Verify
+## 验证
 
 ```bash
 python -m pytest -q
@@ -58,7 +49,7 @@ python scripts/public_safety_scan.py
 git diff --check
 ```
 
-## Quick Shape
+## 快速结构
 
 ```mermaid
 flowchart LR
@@ -73,30 +64,23 @@ flowchart LR
   Receipt --> Writer
 ```
 
-## Repository Layout
+## 仓库结构
 
-- `src/ao_state_writer/` - canonical state writer, CLI, compatibility checks,
-  preflight reconciliation, watchdog timeout proposal handling, and review
-  adapter contract.
-- `examples/` - sanitized contract and TODO examples.
-- `docs/` - architecture, compatibility, receipt, and unattended-loop notes.
-- `tests/` - public smoke/regression tests for the safety boundaries.
-- `scripts/public_safety_scan.py` - guardrail that rejects local paths and
-  private project identifiers before publishing.
+- `src/ao_state_writer/`：canonical state writer、CLI、兼容性检查、preflight reconcile、watchdog timeout proposal、review adapter contract。
+- `examples/`：已脱敏的 contract 和 TODO 示例。
+- `docs/`：中文为主、英文为辅的架构、兼容边界、receipt contract、无人值守 loop 说明。
+- `.github/`：中文为主、英文为辅的 PR 模板和 issue 模板。
+- `tests/`：公开 smoke/regression tests，覆盖关键安全边界。
+- `scripts/public_safety_scan.py`：发布前公开安全扫描，拒绝本机路径和私有项目标识。
 
-## Design Rules
+## 设计原则
 
-1. Keep `ao-state-writer` as the only canonical writer.
-2. Keep runtime transport profile-owned.
-3. Bind external receipts to package hash, submission nonce, artifact hash, gate
-   proposal, and caller identity.
-4. Treat unknown schema, unknown contract version, unknown action vocabulary,
-   and non-canonical roots as fail-closed compatibility errors.
-5. Repair missing evidence when safe; escalate only at owner-only boundaries or
-   after the repair ladder is exhausted.
+1. `ao-state-writer` 是唯一 canonical writer。
+2. runtime transport 选择属于 profile/adapter；仓库中的 GPT Pro browser/CDP bridge 只是 reference adapter。
+3. 外部 receipt 必须绑定 package hash、submission nonce、artifact hash、gate proposal 和 caller identity。
+4. 未知 schema、未知 contract version、未知 action vocabulary、non-canonical root 都必须 fail-closed。
+5. 安全时自动 repair 缺失证据；只有明确 gate、human-only 边界或 repair ladder 耗尽后才升级。
 
-## Status
+## 状态
 
-This is an alpha reference extraction. The mechanism is intended for operators
-who can read and adapt the contract/profile boundary before running it on a real
-project.
+这是一个 alpha reference extraction。它面向能够阅读并适配 contract/profile boundary 的 operator；在真实项目上运行前，请先写好私有 profile，并跑完整测试和公开安全扫描。

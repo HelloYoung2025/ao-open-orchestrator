@@ -11,6 +11,8 @@ FORBIDDEN = [
     re.compile(pattern, re.IGNORECASE)
     for pattern in [
         "/" + "Users/",
+        "/" + "home/",
+        r"[A-Za-z]:\\\\",
         "young" + "hu",
         r"\." + "agent-orchestrator",
         "ccai" + "bao",
@@ -19,6 +21,12 @@ FORBIDDEN = [
         r"\b" + "A" + "18" + r"\b",
         r"\b" + "A" + "19" + r"\b",
         "/" + "tmp/" + "a" + "18",
+        r"\bconversation[_-]?id\b",
+        r"\bthread[_-]?id\b",
+        r"\brunner[_-]?id\b",
+        r"\bremote[_-]?id\b",
+        r"\bsk-[A-Za-z0-9]{20,}\b",
+        r"\bgh[pousr]_[A-Za-z0-9_]{20,}\b",
     ]
 ]
 

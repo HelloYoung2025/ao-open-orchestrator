@@ -117,10 +117,10 @@ def main() -> int:
             "blocker_code": blocker_code,
             "external_review_submission_nonce": nonce,
             "artifact_path": str(raw_out),
-            "model": os.environ.get("AO_GPT_PRO_MODEL_LABEL", "ChatGPT Desktop Pro"),
+            "model": os.environ.get("AO_GPT_PRO_MODEL_LABEL", "ChatGPT Pro profile adapter"),
             "model_slug": os.environ.get("AO_GPT_PRO_MODEL_SLUG", ""),
-            "conversation_id": os.environ.get("AO_GPT_PRO_CONVERSATION_ID", ""),
-            "summary": raw_text[:800],
+            "transcript_sha256": hashlib.sha256(raw_text.encode("utf-8", errors="replace")).hexdigest(),
+            "summary": f"GPT Pro review artifact captured; verdict={verdict}",
         },
         0,
     )

@@ -43,10 +43,10 @@ VERDICT_RE = re.compile(
     re.IGNORECASE,
 )
 VERDICT_INSTR = (
-    "\n\n---\nThe complete review package is attached as a .zip (assembly head de14143). "
-    "Unzip it and review the source under claw-code-main/. "
-    "End your response with a final line EXACTLY in this form: "
-    "VERDICT: <one of: pass|pass_with_nits|advisory|blocker>"
+    "\n\n---\nThe complete review package is attached as a .zip. "
+    "Unzip it, review the included source and evidence, and treat the package "
+    "contents as the review scope. End your response with a final line EXACTLY "
+    "in this form: VERDICT: <one of: pass|pass_with_nits|advisory|blocker>"
 )
 
 

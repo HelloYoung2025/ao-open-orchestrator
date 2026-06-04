@@ -26,7 +26,6 @@ dev = ["pytest>=8"]
 
 [project.scripts]
 ao-state-writer = "ao_state_writer.cli:main"
-ao-gpt-pro-desktop-bridge = "ao_state_writer.gpt_pro_desktop_bridge:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

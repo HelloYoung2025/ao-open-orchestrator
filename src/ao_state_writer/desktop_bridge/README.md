@@ -1,63 +1,71 @@
-# desktop_bridge — GPT Pro 外审驱动（major-chapter external review）
+# desktop_bridge — GPT Pro Review Adapter
 
-`gpt_pro_desktop_bridge.py` 调用这里的脚本来驱动 **真正的 GPT Pro 模型** 完成 major-chapter
-外审（提交审核包 + 收取 Pro verdict）。bridge 通过模块相对路径解析脚本（不依赖 `/tmp`），
-`AO_GPT_PRO_DESKTOP_BRIDGE_SCRIPT` 可覆盖；`DEFAULT_BRIDGE_SCRIPT` 现指向 **browser actuator**。
+本目录提供一个可选的 browser/CDP adapter 示例，用于把 `review-job`
+产生的 GPT Pro 外审任务提交到已登录的 ChatGPT web session，并把 transcript
+写回本地 artifact。它是 profile transport 示例，不是 core trust root。
 
-外审三硬约束（Owner 决定 2026-06-03，缺一不可）：**非 GUI 屏幕自动化 / 非开发者 API /
-必须真 GPT Pro 模型**。唯一同时满足三者的载体 = 程序化(CDP)驱动已登录的 chatgpt.com 产品。
+English summary: this directory contains an optional browser/CDP transport
+adapter. The canonical trust decision still happens in `ao-state-writer`.
 
----
+## Contract
 
-## 主驱动 — chatgpt_browser_review.py / .sh（PROVEN 2026-06-03）
+`gpt_pro_desktop_bridge.py` 调用脚本：
 
-通过 **Chrome DevTools Protocol** 程序化驱动**已登录的真实 chatgpt.com**，选中 GPT Pro
-模型（中文 UI 标签「进阶专业」），附上审核包、提交、轮询到完成、抓取 transcript。
-**无 osascript、无像素点击、无剪贴板、无窗口焦点竞争** —— 规避了所有击垮 GUI 路线的失败点。
+```bash
+chatgpt_browser_review.sh run <package.zip> <prompt.md> <raw_out> <timeout_s>
+```
 
-接口（被 bridge 调用）：`chatgpt_browser_review.sh run <package.zip> <prompt.md> <raw_out> <timeout_s>`
-→ 把含 `VERDICT:<enum>` 的完整 transcript 写入 `<raw_out>` 并 exit 0；bridge 负责算 sha/nonce、
-分类 verdict、cli 负责按契约设 `caller_type=gpt_pro_review_actuator` 记 receipt（**orchestrator
-全程不自设 caller type**）。
+脚本成功时必须把捕获到的最后一条 assistant response 文本写入 `<raw_out>`，并且该文本中必须出现可解析的最终行：
 
-### 前置条件（运行 actuator 前必须就绪）
-1. **已登录的 Chrome，且开了 CDP 端口**。独立实例、与日常 Chrome 并存：
-   ```
-   "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \
-     --remote-debugging-port=9222 --user-data-dir=/tmp/cgauto \
-     --no-first-run --no-default-browser-check --new-window https://chatgpt.com/
-   ```
-   然后**在该窗口里手动登录 ChatGPT Pro 账号一次**（复制加密 cookie 会被 macOS keychain 挡住，
-   手动登录最干净；会话长期有效）。
-2. **playwright**：`AO_GPT_PRO_BROWSER_PYTHON` 指向装了 playwright 的 python（默认 `/tmp/cgpw/bin/python`）。
+```text
+VERDICT: <one of: pass|pass_with_nits|advisory|blocker>
+```
 
-### 关键环境变量
-- `AO_GPT_PRO_CDP_URL`（默认 `http://127.0.0.1:9222`）
-- `AO_GPT_PRO_BROWSER_PYTHON`（默认 `/tmp/cgpw/bin/python`）
-- `AO_GPT_PRO_BROWSER_MAX_S`（完成轮询上限，默认 2700s）
-- `AO_GPT_PRO_VERDICT_CACHE_DIR` / `AO_GPT_PRO_VERDICT_CACHE_MAX_AGE_S`（按 package-sha 的 verdict 缓存）
+之后由 bridge/CLI 负责：
 
-### 完成检测契约（关键正确性）
-**只有出现可解析的 `VERDICT:(blocker|pass_with_nits|advisory|pass)` 行、且 NOT generating、
-且连续 2 次稳定，才算完成。** Pro 常先发一句开场白（"我会解压审查…给出 verdict"）再长时间推理，
-中途短暂停顿会让 stop 键消失 —— 若只看"停了"就截断,会把**开场白误当 verdict**（实测踩过，
-196 字节开场白被缓存，bridge 报 `unrecognized_review_verdict`）。VERDICT 行硬门槛根除该误触发。
+- 校验 package sha；
+- 绑定 nonce；
+- 复制 artifact 到 `reports/`；
+- 用 `AO_CALLER_TYPE=gpt_pro_review_actuator` 通过 state writer 记录 receipt。
 
-### 缓存韧性（为什么需要）
-`gpt-pro-actuate → bridge → 脚本` 这条嵌套链曾在 ~8.7 分钟被外部 SIGTERM 杀掉（杀因未定位），
-而 Pro 一轮约 14 分钟。对策：脚本按 `sha256(package)` 缓存**有效** verdict；即便 bridge 被杀，
-**孤儿浏览器进程仍跑满并写出缓存**（独立浏览器捕获不受该杀窗影响），随后**重跑 `gpt-pro-actuate`
-秒级命中缓存 → cli 正规记 receipt**。缓存只接受含可解析 VERDICT 行的内容（开场白不缓存）。
+orchestrator 或 worker 不应自声明 `gpt_pro_review_actuator`。
 
----
+## Runtime Prerequisites
 
-## 已退役 — chatgpt_desktop_review.sh（GUI，parked 为 `.PAUSED-mousegrab`）
+此 adapter 依赖用户自己的 profile：
 
-原 GUI 路线（osascript/cliclick 像素点击 + 剪贴板 Cmd+A/Cmd+C + 窗口焦点）**本质脆弱、已弃用**：
-`sdef`/Automation 工具链一坏即废、几何点击会抓错窗口、嵌套链被杀、verdict 落在加密会话取不出。
-本变更不把 GUI helper 作为 canonical 自动路径入库；若本机仍有 `.PAUSED-mousegrab` 实验脚本，它只是
-本地历史证据，不参与 `gpt-pro-actuate`。
+- 一个已登录、可被 Chrome DevTools Protocol 连接的浏览器 session；
+- 可运行 Playwright 的 Python；
+- 可用的 ChatGPT Pro 订阅或等价 Pro 账号权限；
+- 本地环境变量中声明的模型标签、CDP URL 和超时参数。
 
-## 运行时瞬态
-- `reports/gpt-pro-raw/<proposal>-<nonce>.txt` — 本轮抓取的原始 transcript（bridge 读它分类 verdict）。
-- `/tmp/cg_pro_verdict_<package_sha256>.txt` — 按包 sha 的 verdict 缓存（瞬态，不入库）。
+模型校验是 UI/transport 层证据：adapter 尝试选择与 `AO_GPT_PRO_MODEL_LABELS`
+匹配的 Pro 标签，无法匹配就拒绝执行。这不是后端模型身份的密码学证明。
+
+English: model verification is UI/transport-level evidence. The adapter selects
+a label configured by `AO_GPT_PRO_MODEL_LABELS` and refuses to proceed if it
+cannot. It is not cryptographic proof of backend model identity.
+
+默认环境变量：
+
+- `AO_GPT_PRO_CDP_URL`：CDP endpoint，默认 `http://127.0.0.1:9222`；
+- `AO_GPT_PRO_BROWSER_PYTHON`：带 Playwright 的 Python；
+- `AO_GPT_PRO_BROWSER_MAX_S`：完成轮询上限；
+- `AO_GPT_PRO_MODEL_LABELS`：profile 接受的 Pro 模型标签；
+- `AO_GPT_PRO_VERDICT_CACHE_DIR` / `AO_GPT_PRO_VERDICT_CACHE_MAX_AGE_S`：同一 gate/nonce 的 assistant response 缓存。
+
+## Completion Rule
+
+完成条件不是“页面看起来停止生成”，而是：
+
+1. 存在可解析的 `VERDICT` 行；
+2. 页面不再 generating；
+3. 最后一条 assistant response 连续两次轮询稳定。
+
+这样可以避免把模型开场白、短暂停顿或中间草稿误当成最终 verdict。
+
+## Safety Notes
+
+- 不要把浏览器 cookie、CDP profile、raw transcript 或 runtime cache 提交到公开仓库。
+- 如果 adapter 失败，应返回 typed failure 或让 state writer 记录 blocker，不能伪造 pass。
+- 真实项目可以替换 `AO_GPT_PRO_DESKTOP_BRIDGE_SCRIPT`，但替换 adapter 必须输出同样的 JSON/artifact contract。
