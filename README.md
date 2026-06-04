@@ -1,5 +1,7 @@
 # AO Open Orchestrator
 
+[简体中文](README.zh-CN.md)
+
 AO Open Orchestrator is a reference implementation of a fail-closed,
 repair-capable orchestration loop for agentic project execution.
 
