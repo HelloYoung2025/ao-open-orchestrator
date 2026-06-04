@@ -1,0 +1,12 @@
+.DS_Store
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+build/
+dist/
+*.egg-info/
+.omx/state/
+reports/
+!examples/reports/
+!examples/reports/.gitkeep

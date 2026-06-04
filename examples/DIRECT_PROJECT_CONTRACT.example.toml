@@ -1,0 +1,39 @@
+version = 1
+
+[ao_clone_isolation]
+# Replace this with the absolute path of the active project root in a private
+# profile. Do not commit machine-specific values to a public repository.
+active_root = "/absolute/path/to/project"
+
+[owner_proxy]
+project_id = "example-project"
+
+[continuation_policy]
+orchestrator_session = "example-orchestrator"
+auto_spawn_actions = [
+  "dispatch_next_slice_plan_mode",
+  "codex_cc_review",
+  "repair_active",
+  "state_writer_closure",
+  "major_closure_candidate",
+]
+gated_actions = ["gpt_pro_desktop_review"]
+non_executable_actions = ["repair_attempts_exhausted"]
+
+[review_receipts]
+gpt_pro_receipt_requires = [
+  "package_sha256",
+  "external_review_submission_nonce",
+  "external_review_receipt_sha256",
+  "external_review_artifact_ref",
+  "external_review_gate_proposal_id",
+  "AO_CALLER_TYPE=gpt_pro_review_actuator",
+]
+codex_cc_receipt_requires = [
+  "codex_cc_transcript_sha256",
+  "AO_CALLER_TYPE=codex_cc",
+]
+
+[transports]
+api_transport_allowed = false
+desktop_or_browser_adapter_required = true
