@@ -1,0 +1,155 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Project version from pyproject.toml, for v0.1.0 use 0.1.0"
+        required: true
+        type: string
+      tag:
+        description: "Git tag to create, for v0.1.0 use v0.1.0"
+        required: true
+        type: string
+      target_sha:
+        description: "Main branch commit sha to release"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ inputs.tag }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: publish-${{ inputs.tag }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.target_sha }}
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Validate release inputs
+        env:
+          VERSION: ${{ inputs.version }}
+          TAG: ${{ inputs.tag }}
+          TARGET_SHA: ${{ inputs.target_sha }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          test "$TAG" = "v$VERSION"
+          test "$(git rev-parse HEAD)" = "$TARGET_SHA"
+
+          python - <<'PY'
+          import os
+          import pathlib
+          import re
+          import tomllib
+
+          expected = os.environ["VERSION"]
+          tag = os.environ["TAG"]
+          target_sha = os.environ["TARGET_SHA"]
+          if not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", expected):
+              raise SystemExit(f"invalid version: {expected}")
+          if tag != f"v{expected}":
+              raise SystemExit(f"tag/version mismatch: tag={tag} version={expected}")
+          if not re.fullmatch(r"[0-9a-f]{40}", target_sha):
+              raise SystemExit(f"target_sha must be a full lowercase git sha: {target_sha}")
+          data = tomllib.loads(pathlib.Path("pyproject.toml").read_text(encoding="utf-8"))
+          actual = data["project"]["version"]
+          if actual != expected:
+              raise SystemExit(f"version mismatch: pyproject={actual} input={expected}")
+          PY
+
+          git fetch --tags origin
+          if git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
+            echo "tag already exists: $TAG" >&2
+            exit 1
+          fi
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "release already exists: $TAG" >&2
+            exit 1
+          fi
+
+      - name: Install build tools
+        run: |
+          python -m pip install --upgrade pip setuptools wheel build
+          python -m pip install -e ".[dev]"
+
+      - name: Verify
+        run: |
+          python -m pytest -q
+          python scripts/public_safety_scan.py
+          git diff --check
+
+      - name: Build release artifacts
+        run: python -m build --sdist --wheel
+
+      - name: Verify release artifact contents
+        run: |
+          python - <<'PY'
+          import pathlib
+          import tarfile
+          import zipfile
+
+          required = {
+              "ao_state_writer/desktop_bridge/chatgpt_browser_review.py",
+              "ao_state_writer/desktop_bridge/chatgpt_browser_review.sh",
+              "ao_state_writer/desktop_bridge/README.md",
+          }
+          wheels = list(pathlib.Path("dist").glob("ao_open_orchestrator-*.whl"))
+          sdists = list(pathlib.Path("dist").glob("ao_open_orchestrator-*.tar.gz"))
+          if len(wheels) != 1 or len(sdists) != 1:
+              raise SystemExit(f"expected one wheel and one sdist, got {wheels=} {sdists=}")
+          with zipfile.ZipFile(wheels[0]) as wheel:
+              wheel_names = set(wheel.namelist())
+          missing_wheel = sorted(required - wheel_names)
+          if missing_wheel:
+              raise SystemExit(f"wheel missing package data: {missing_wheel}")
+          with tarfile.open(sdists[0]) as sdist:
+              sdist_names = set(sdist.getnames())
+          missing_sdist = [
+              name for name in sorted(required)
+              if not any(path.endswith(name) for path in sdist_names)
+          ]
+          if missing_sdist:
+              raise SystemExit(f"sdist missing package data: {missing_sdist}")
+          PY
+
+      - name: Generate checksums and notes
+        env:
+          TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          shasum -a 256 dist/* > SHA256SUMS
+          awk -v tag="$TAG" '
+            $0 == "## " tag { in_section=1; next }
+            /^## / && in_section { exit }
+            in_section { print }
+          ' CHANGELOG.md > RELEASE_NOTES.md
+          test -s RELEASE_NOTES.md
+
+      - name: Create tag and GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag }}
+          TARGET_SHA: ${{ inputs.target_sha }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "$TAG" "$TARGET_SHA" -m "AO Open Orchestrator $TAG"
+          git push origin "refs/tags/$TAG"
+          gh release create "$TAG" dist/* SHA256SUMS \
+            --title "$TAG" \
+            --notes-file RELEASE_NOTES.md
