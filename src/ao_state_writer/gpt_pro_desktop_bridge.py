@@ -141,10 +141,13 @@ def _resolve_job_path(root: Path, value: object) -> Path | None:
     return full
 
 
-_SUPPORTED_VERDICTS = ("blocker", "pass_with_nits", "advisory", "pass")
+# Recognize the pass_with_advisory alias (the writer normalizes it -> advisory at apply time).
+# Ordered BEFORE `pass` in the regex so the longer alias wins; `pass\b` never matches inside
+# "pass_with_advisory" because the trailing `_` is a word char.
+_SUPPORTED_VERDICTS = ("blocker", "pass_with_advisory", "pass_with_nits", "advisory", "pass")
 _VERDICT_RE = re.compile(
     r'(?:["“”]?\bverdict\b["“”]?|结论)\s*[:：]\s*["“”]?'
-    r"(blocker|pass_with_nits|advisory|pass)\b",
+    r"(blocker|pass_with_advisory|pass_with_nits|advisory|pass)\b",
     re.IGNORECASE,
 )
 

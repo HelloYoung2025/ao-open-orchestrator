@@ -39,6 +39,7 @@ from .writer import (
     StateTransitionDecision,
     StateTransitionProposal,
     StateWriter,
+    _REVIEW_VERDICT_ALIASES,
 )
 
 
@@ -203,6 +204,10 @@ def build_parser() -> argparse.ArgumentParser:
     reconcile_parser.add_argument("--root", type=Path, required=True)
     reconcile_parser.add_argument("--dry-run", action="store_true")
 
+    reconcile_leases_parser = subparsers.add_parser("reconcile-leases")
+    reconcile_leases_parser.add_argument("--root", type=Path, required=True)
+    reconcile_leases_parser.add_argument("--apply", action="store_true")
+
     preflight_parser = subparsers.add_parser("preflight")
     preflight_parser.add_argument("--status-file", type=Path, required=True)
     preflight_parser.add_argument("--recognized", action="append", default=[])
@@ -327,15 +332,23 @@ def _is_current_actionable_obligation(
         return _is_live_gpt_pro_gate(state, proposal_id, ledger_path)
     if ledger_path is None:
         return True
+    # Capture ledger-file presence BEFORE the scan (avoid a TOCTOU on a post-scan re-check).
+    # _scan_ledger_for_proposal collapses file-absent, proposal-absent, and corrupt-line-skipped
+    # all into None, so the presence flag is what distinguishes them.
+    ledger_existed = ledger_path.exists()
     proposal = _scan_ledger_for_proposal(ledger_path, proposal_id)
     if proposal is None:
-        return True
+        # A legitimately-absent ledger FILE -> cannot disambiguate, treat as current (back-compat).
+        # A proposal MISSING from an EXISTING ledger -> an accepted proposal_results entry with no
+        # ledger record is stale/corrupt -> fail CLOSED to not-current so a phantom obligation
+        # cannot shadow healthy sibling obligations at the global preflight chokepoint.
+        return not ledger_existed
     target_id = proposal.get("target_id")
     if not isinstance(target_id, str) or not target_id:
-        return True
+        return False  # malformed ledger proposal (no target) -> not a current obligation
     target = state.get("targets", {}).get(target_id)
     if not isinstance(target, dict):
-        return True
+        return False  # the proposal's target is gone from state -> not a current obligation
     if latest_by_target is not None:
         latest_revision = latest_by_target.get(target_id)
         if isinstance(latest_revision, int) and stored.get("state_revision") != latest_revision:
@@ -783,6 +796,17 @@ def cmd_dispatch(args: argparse.Namespace) -> int:
     )
 
 
+def _is_spawned_dispatch_reconcile_action(action: object) -> bool:
+    """True iff ``action`` is an ordinary fast auto-spawn continuation action whose orphaned
+    'pending' lease is safe for the deterministic janitor to reclaim. Excludes the external
+    review/actuator actions (codex_cc_review, gpt_pro_desktop_review), which legitimately hold a
+    'pending' lease far longer than the orphan floor — reclaiming one of those could let a second
+    actuator run double-submit."""
+    if action in {"codex_cc_review", "gpt_pro_desktop_review"}:
+        return False
+    return action in AUTO_SPAWN_ACTIONS or action == "repair_attempts_exhausted"
+
+
 def cmd_reconcile_once(args: argparse.Namespace) -> int:
     state_path, ledger_path = _state_paths(args.root)
     writer = StateWriter(state_path=state_path, ledger_path=ledger_path)
@@ -808,6 +832,72 @@ def cmd_reconcile_once(args: argparse.Namespace) -> int:
     if ready:
         return _emit({"result": "ready", "ready_candidates": ready, "gated_candidates": gated}, 0)
     return _emit({"result": "nothing_to_continue", "ready_candidates": [], "gated_candidates": []}, 0)
+
+
+def cmd_reconcile_leases(args: argparse.Namespace) -> int:
+    """Deterministic janitor: delete provably-orphaned fast auto-spawn 'pending' dispatch leases.
+
+    When an orchestrator session is SIGKILLed between claim_dispatch and confirm_dispatch a
+    'pending' dispatch lease is orphaned, and nothing re-runs the reclaim on its own (claim_dispatch's
+    reclaim is a fall-through reached only by re-dispatching, which spawns a worker). This
+    identity-free command lets a non-LLM caller (sidecar/cron) clear that orphan class so a revived
+    orchestrator finds a clean lease table.
+
+    Fail-closed scope: a lease is reclaimed ONLY when its stored next_required_action is a fast
+    auto-spawn continuation action (``_is_spawned_dispatch_reconcile_action`` is True). That
+    deliberately EXCLUDES gpt_pro_desktop_review / codex_cc_review actuator/review leases, which
+    legitimately hold 'pending' far longer than the orphan floor; deleting one could let a second
+    actuator run double-submit. Unclassifiable leases (no proposal_result) are left for the
+    LLM/human. The writer re-checks the orphan-age under the single-flight lock before deleting, so a
+    lease a concurrent claim refreshed is never reclaimed.
+    """
+    state_path, ledger_path = _state_paths(args.root)
+    writer = StateWriter(state_path=state_path, ledger_path=ledger_path)
+    try:
+        state = _read_state(state_path)
+    except UnsupportedStateSchemaVersion:
+        return _unsupported_state_schema()
+    dispatched = state.get("dispatched_proposals", {})
+    if not isinstance(dispatched, dict):
+        dispatched = {}
+    proposal_results = state.get("proposal_results", {})
+    if not isinstance(proposal_results, dict):
+        proposal_results = {}
+    candidates: list[str] = []
+    action_skipped: list[dict[str, object]] = []
+    for proposal_id, record in dispatched.items():
+        if not (
+            isinstance(record, dict)
+            and record.get("status") == "pending"
+            and StateWriter._pending_lease_expired(record)
+        ):
+            continue
+        stored = proposal_results.get(proposal_id)
+        if not isinstance(stored, dict):
+            action_skipped.append({"proposal_id": proposal_id, "reason": "no_proposal_result"})
+            continue
+        action = stored.get("next_required_action")
+        if _is_spawned_dispatch_reconcile_action(action):
+            candidates.append(proposal_id)
+        else:
+            action_skipped.append(
+                {
+                    "proposal_id": proposal_id,
+                    "next_required_action": action,
+                    "reason": "actuator_or_review_or_unknown_action",
+                }
+            )
+    outcome = writer.reclaim_orphaned_pending_leases(candidates, apply=bool(args.apply))
+    return _emit(
+        {
+            "result": "reclaimed" if args.apply else "would_reclaim",
+            "applied": bool(args.apply),
+            "reclaimed": outcome["reclaimed"],
+            "not_expired_at_lock": outcome["skipped"],
+            "action_skipped": action_skipped,
+        },
+        0,
+    )
 
 
 def _build_review_job_payload(
@@ -1116,7 +1206,10 @@ def _run_gpt_pro_actuator_cli(
     if not isinstance(nonce, str) or not nonce:
         return _emit({"result": "missing_external_review_submission_nonce", "proposal_id": proposal_id}, 3)
     verdict = bridge_result.get("verdict")
-    if verdict not in {"advisory", "pass", "pass_with_nits", "blocker"}:
+    # Accept the pass_with_advisory alias here too; the writer normalizes it -> advisory at apply
+    # time. Rejecting it at this actuator gate would wedge a legitimate pass receipt before the
+    # writer ever sees it.
+    if verdict not in {"advisory", "pass", "pass_with_nits", "pass_with_advisory", "blocker"}:
         return _record_gpt_pro_actuator_failure(
             writer=writer,
             job=job,
@@ -1441,8 +1534,12 @@ def _gpt_pro_actuator_failure_proposal_id(proposal_id: str) -> str:
 _GPT_PRO_PASS_VERDICTS = frozenset({"pass", "pass_with_nits", "advisory"})
 # Independent re-validation regex — does NOT rely on last-match semantics; requires
 # the verdict field to appear as a JSON-key-like token immediately before its value.
+# Includes the pass_with_advisory alias (ordered BEFORE `pass` so the longer alias wins; `pass\b`
+# alone never matches inside "pass_with_advisory" — the trailing `_` is a word char). This RAW-artifact
+# re-scan must recognize the alias or a legitimate pass receipt wedges major closure; tokens are
+# normalized through _REVIEW_VERDICT_ALIASES before the pass-family membership test below.
 _RECEIPT_VERDICT_RE = re.compile(
-    r'(?i)\bverdict\b.{0,10}[:：].{0,5}(blocker|pass_with_nits|advisory|pass)\b'
+    r'(?i)\bverdict\b.{0,10}[:：].{0,5}(blocker|pass_with_advisory|pass_with_nits|advisory|pass)\b'
 )
 # Blocker-semantic signal regex (Hole 1 fix): fail-closed if the artifact contains
 # a non-null blocker_code field OR a severity=blocker field in any finding, regardless
@@ -1519,7 +1616,13 @@ def _gpt_pro_closure_receipt_guard(
         )
 
     # 4. Independent verdict token scan: confirm pass-family, reject if blocker token present.
-    verdicts_found = [m.group(1).lower() for m in _RECEIPT_VERDICT_RE.finditer(raw)]
+    # Normalize each found token through the writer's alias map (single source of truth) so
+    # pass_with_advisory -> advisory before the pass-family membership test below. The blocker
+    # check is unaffected (blocker is not aliased).
+    verdicts_found = [
+        _REVIEW_VERDICT_ALIASES.get(token, token)
+        for token in (m.group(1).lower() for m in _RECEIPT_VERDICT_RE.finditer(raw))
+    ]
     if not verdicts_found:
         return "no verdict token found in receipt artifact during re-validation"
     if any(v == "blocker" for v in verdicts_found):
@@ -1664,6 +1767,9 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "reconcile-once":
         return cmd_reconcile_once(args)
+
+    if args.command == "reconcile-leases":
+        return cmd_reconcile_leases(args)
 
     if args.command == "review-job":
         return cmd_review_job(args)

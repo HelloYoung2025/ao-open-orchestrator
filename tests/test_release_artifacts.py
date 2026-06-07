@@ -46,7 +46,7 @@ def test_wheel_contains_reference_desktop_bridge(tmp_path: Path) -> None:
         text=True,
     )
 
-    wheels = list(wheelhouse.glob("ao_open_orchestrator-0.1.0-*.whl"))
+    wheels = list(wheelhouse.glob("ao_open_orchestrator-0.2.0-*.whl"))
     assert len(wheels) == 1
 
     with zipfile.ZipFile(wheels[0]) as wheel:
@@ -55,4 +55,4 @@ def test_wheel_contains_reference_desktop_bridge(tmp_path: Path) -> None:
     assert "ao_state_writer/desktop_bridge/README.md" in names
     assert "ao_state_writer/desktop_bridge/chatgpt_browser_review.py" in names
     assert "ao_state_writer/desktop_bridge/chatgpt_browser_review.sh" in names
-    assert "ao_open_orchestrator-0.1.0.dist-info/entry_points.txt" in names
+    assert "ao_open_orchestrator-0.2.0.dist-info/entry_points.txt" in names

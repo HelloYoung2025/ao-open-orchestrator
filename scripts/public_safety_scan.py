@@ -6,7 +6,10 @@ import sys
 
 
 ROOT = Path(__file__).resolve().parents[1]
-SKIP_DIRS = {".git", ".pytest_cache", "__pycache__", ".venv", "dist", "build"}
+# Skip VCS, caches, build outputs, and gitignored local runtime state (.omx). These never ship in
+# the published artifact (they are gitignored), so scanning them only produces false positives from
+# local-only state; the scan must cover what gets published, i.e. tracked/publishable files.
+SKIP_DIRS = {".git", ".pytest_cache", "__pycache__", ".venv", "dist", "build", ".omx"}
 FORBIDDEN = [
     re.compile(pattern, re.IGNORECASE)
     for pattern in [

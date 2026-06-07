@@ -39,7 +39,8 @@ LOGGED_OUT = ("Log in", "Sign up for free", "Welcome back")
 # ("I'll review and give a verdict") and pause mid-stream — that must NOT be mistaken for
 # completion, and must NOT be cached. Mirror the bridge's _VERDICT_RE enum.
 VERDICT_RE = re.compile(
-    r'(?:["“”]?\bverdict\b["“”]?|结论)\s*[:：]\s*["“”]?(blocker|pass_with_nits|advisory|pass)\b',
+    r'(?:["“”]?\bverdict\b["“”]?|结论)\s*[:：]\s*["“”]?'
+    r"(blocker|pass_with_advisory|pass_with_nits|advisory|pass)\b",
     re.IGNORECASE,
 )
 VERDICT_INSTR = (

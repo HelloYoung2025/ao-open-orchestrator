@@ -6,7 +6,7 @@ __pycache__/
 build/
 dist/
 *.egg-info/
-.omx/state/
+.omx/
 reports/
 !examples/reports/
 !examples/reports/.gitkeep

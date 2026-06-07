@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, ClassVar
@@ -23,6 +23,13 @@ from .compat import (
 
 
 ACCEPTED_ADVISORY_VERDICTS = {"pass", "pass_with_nits", "advisory"}
+# Exact, narrow aliases for non-canonical "pass-with-a-note" tokens a reviewer may emit. They are
+# normalized to the canonical token BEFORE validation/routing so closure routing fires. Without this,
+# a non-canonical verdict matches neither the advisory branches nor the blocker branch, so the
+# obligation records next_required_action=None and dispatch cannot route a null action (the
+# orchestrator freezes). Keep this map exact and minimal: never alias a token that could carry
+# blocker semantics.
+_REVIEW_VERDICT_ALIASES = {"pass_with_advisory": "advisory"}
 REVIEW_SCOPE_ACTORS = {
     "codex_cc": "codex_cc",
     "gpt_pro": "gpt_pro",
@@ -125,6 +132,18 @@ class StateWriter:
             replay = state["proposal_results"].get(proposal.proposal_id)
             if replay is not None:
                 return StateTransitionDecision(**replay, replayed=True)
+
+            # Normalize an exact non-canonical review-verdict alias (e.g. pass_with_advisory)
+            # to its canonical token BEFORE validation and routing, so closure routing and the
+            # caller/proof gates all see the canonical verdict. The proposal is frozen, so rebind
+            # to a replaced copy.
+            if (
+                proposal.review_scope in REVIEW_SCOPE_ACTORS
+                and proposal.verdict in _REVIEW_VERDICT_ALIASES
+            ):
+                proposal = replace(
+                    proposal, verdict=_REVIEW_VERDICT_ALIASES[proposal.verdict]
+                )
 
             rejection = self._rejection(proposal, state)
             if rejection is not None:
@@ -889,6 +908,51 @@ class StateWriter:
             if record is not None and record.get("status") == "pending":
                 del state["dispatched_proposals"][proposal_id]
                 self._write_state(state)
+
+    def reclaim_orphaned_pending_leases(
+        self, proposal_ids: list[str], *, apply: bool
+    ) -> dict[str, list[str]]:
+        """Delete provably-orphaned 'pending' dispatch leases for the given proposal_ids.
+
+        A lease is reclaimed ONLY IF, re-read under the single-flight lock, it is still
+        ``status == "pending"`` AND ``_pending_lease_expired`` (older than
+        STALE_PENDING_DISPATCH_SECONDS, or an unparseable timestamp). The under-lock expiry
+        recheck is the race guard: a lease a concurrent claim refreshed (e.g. a just-started
+        external review actuator bridge) is younger than the floor and is left untouched, so a
+        reclaim can never delete a live lease out from under an in-flight dispatch.
+
+        The CALLER owns the action-class invariant: ``proposal_ids`` must already be filtered to
+        ordinary fast auto-spawn continuation leases — never external review actuator/review leases
+        (e.g. desktop GPT Pro review), which legitimately hold "pending" far longer than the orphan
+        floor. This method enforces only the orphan-age invariant, all that can be verified from the
+        lease record alone. It mirrors ``release_dispatch`` (pending-only delete) with the orphan-age
+        gate added, and never deletes a ``spawned`` record.
+
+        With ``apply=False`` this is a pure dry-run: it reports what WOULD be reclaimed and writes
+        nothing.
+        """
+        reclaimed: list[str] = []
+        skipped: list[str] = []
+        with self._single_flight():
+            state = self._read_state()
+            dispatched = state.setdefault("dispatched_proposals", {})
+            changed = False
+            for proposal_id in proposal_ids:
+                record = dispatched.get(proposal_id)
+                if (
+                    isinstance(record, dict)
+                    and record.get("status") == "pending"
+                    and self._pending_lease_expired(record)
+                ):
+                    reclaimed.append(proposal_id)
+                    if apply:
+                        del dispatched[proposal_id]
+                        changed = True
+                else:
+                    skipped.append(proposal_id)
+            if changed:
+                self._write_state(state)
+        return {"reclaimed": reclaimed, "skipped": skipped}
 
 
 def _lock_is_stale(text: str) -> bool:
