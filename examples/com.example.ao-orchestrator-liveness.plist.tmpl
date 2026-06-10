@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- launchd template for the orchestrator-liveness sidecar. Replace every @…@ placeholder before installing:
+       @LABEL@               unique launchd label, e.g. com.example.ao-orchestrator-liveness
+       @SIDECAR_PATH@        absolute path to the installed orchestrator-liveness.sh
+       @LOG_FILE@            absolute log path (StandardOut/StandardError)
+       @HOME@                operator HOME (WorkingDirectory + HOME env)
+       @PATH@                PATH the sidecar runs with (must include node/`ao` and the engine command)
+       @ACTIVE_ROOT@         canonical ao-state-writer state root
+       @ORCHESTRATOR_SESSION@  tmux orchestrator session to watch
+       @PROJECT_ID@          AO project id
+       @STATE_WRITER_CMD@    engine invocation (default: ao-state-writer)
+       @PYTHON_BIN@          interpreter for the sidecar's inline JSON classifiers (default: python3)
+     Render with the bootstrap (or any @…@ substitution); do NOT `launchctl load` the unrendered file. -->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>@LABEL@</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>@SIDECAR_PATH@</string>
+  </array>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <dict>
+    <key>SuccessfulExit</key>
+    <false/>
+  </dict>
+  <key>ThrottleInterval</key>
+  <integer>30</integer>
+  <key>ProcessType</key>
+  <string>Background</string>
+  <key>StandardOutPath</key>
+  <string>@LOG_FILE@</string>
+  <key>StandardErrorPath</key>
+  <string>@LOG_FILE@</string>
+  <key>WorkingDirectory</key>
+  <string>@HOME@</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>@PATH@</string>
+    <key>HOME</key>
+    <string>@HOME@</string>
+    <key>ACTIVE_ROOT</key>
+    <string>@ACTIVE_ROOT@</string>
+    <key>ORCHESTRATOR_SESSION</key>
+    <string>@ORCHESTRATOR_SESSION@</string>
+    <key>PROJECT_ID</key>
+    <string>@PROJECT_ID@</string>
+    <key>STATE_WRITER_CMD</key>
+    <string>@STATE_WRITER_CMD@</string>
+    <key>PYTHON_BIN</key>
+    <string>@PYTHON_BIN@</string>
+    <key>LOG_FILE</key>
+    <string>@LOG_FILE@</string>
+  </dict>
+</dict>
+</plist>

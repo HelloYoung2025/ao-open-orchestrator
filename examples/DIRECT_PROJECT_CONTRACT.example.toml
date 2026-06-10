@@ -1,20 +1,28 @@
 version = 1
 
-# Schematic example only. Align field names, action vocabulary, and required
-# values with the target project's private contract before use.
-# 以下示例仅用于结构说明；使用前请先与目标项目的私有契约对齐字段名、
-# action vocabulary 和必填值。
+# Bootstrap template. Rendered by scripts/bootstrap_project.py (or replace every @…@ by hand)
+# into a target project's DIRECT_PROJECT_CONTRACT.toml. Action vocabulary and receipt-requirement
+# fields are engine-enforced; do not rename them.
+# 引导模板：由 scripts/bootstrap_project.py 渲染（或手动替换每个 @…@）为目标项目的
+# DIRECT_PROJECT_CONTRACT.toml。action vocabulary 与 receipt 必填字段由引擎强制，勿改名。
 
 [ao_clone_isolation]
-# Replace this with the absolute path of the active project root in a private
-# profile. Do not commit machine-specific values to a public repository.
-active_root = "/absolute/path/to/project"
+# Absolute path of the active project root; the canonical ao-state-writer state.json lives here.
+active_root = "@ACTIVE_ROOT@"
 
 [owner_proxy]
-project_id = "example-project"
+project_id = "@PROJECT_ID@"
+
+# Canonical per-project governance documents. Each value MUST be a bare filename (no path
+# separators, no ".."): it is resolved relative to the project root. When this section or a key is
+# omitted, the engine uses the default bare name shown below. An unsafe value fails loud.
+[canonical]
+todo_file = "@TODO_FILE@"
+session_log_file = "@SESSION_LOG_FILE@"
+master_plan_file = "@PLAN_FILE@"
 
 [continuation_policy]
-orchestrator_session = "example-orchestrator"
+orchestrator_session = "@ORCHESTRATOR_SESSION@"
 auto_spawn_actions = [
   "dispatch_next_slice_plan_mode",
   "codex_cc_review",
@@ -22,20 +30,29 @@ auto_spawn_actions = [
   "state_writer_closure",
   "major_closure_candidate",
 ]
-gated_actions = ["gpt_pro_desktop_review"]
+gated_actions = ["escalated_review"]
 non_executable_actions = ["repair_attempts_exhausted"]
 
+# Command a dispatched worker uses to invoke this engine in its dispatch-obligation block. Defaults
+# to the `ao-state-writer` console script shipped by this package (a normal `pip install`). Override
+# only if you run the engine from a source checkout or mid-migration, e.g.
+#   command = "PYTHONPATH=/abs/path/to/src python3 -m ao_state_writer.cli"
+# Omitting the section/key keeps the brand-neutral default (identical rendered obligation).
+[state_writer]
+command = "@STATE_WRITER_CMD@"
+
 [review_receipts]
-gpt_pro_receipt_requires = [
+escalated_review_receipt_requires = [
   "package_sha256",
   "external_review_submission_nonce",
   "external_review_receipt_sha256",
   "external_review_artifact_ref",
   "external_review_gate_proposal_id",
-  "AO_CALLER_TYPE=gpt_pro_review_actuator",
+  "AO_CALLER_TYPE=escalated_review_actuator",
 ]
 codex_cc_receipt_requires = [
   "codex_cc_transcript_sha256",
+  "codex_cc_transcript_artifact_ref",
   "AO_CALLER_TYPE=codex_cc",
 ]
 
@@ -43,10 +60,12 @@ codex_cc_receipt_requires = [
 # Descriptive flags for humans/profile tooling. The current Python core does
 # not enforce these keys directly.
 api_transport_allowed = false
-desktop_or_browser_adapter_required = true
+external_adapter_required = true
 
 [review_policy]
-# Required for the real GPT Pro actuation path. This example uses module
-# invocation so users do not need a separate console script. Replace it with a
-# private profile command that matches your environment.
-gpt_pro_desktop_actuator_command = "python -m ao_state_writer.gpt_pro_desktop_bridge"
+# Command the orchestrator invokes for an escalated-review obligation. The shipped
+# reference actuator is brand-neutral: it verifies the package sha, shells out to YOUR
+# reviewer (set AO_ESCALATED_REVIEW_ACTUATOR_SCRIPT to that command), then normalizes the
+# output into a receipt. Do NOT point AO_ESCALATED_REVIEW_ACTUATOR_SCRIPT back at this
+# module (that recurses). Replace with your own command if you prefer.
+escalated_review_actuator_command = "python3.11 -m ao_state_writer.escalated_review_actuator"

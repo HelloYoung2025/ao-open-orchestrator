@@ -29,7 +29,7 @@ AO Open Orchestrator 不是另一个 scheduler。它假设外层 AO-like runtime
 
 - 它不是 OpenAI API wrapper。
 - 它不是 queue、daemon 或第二状态源。
-- 它不内置一个对所有机器都安全可用的 ChatGPT Desktop 控制器；仓库只提供可选 reference adapter。
+- 它不内置任何特定产品的 reviewer；仓库只提供一个无品牌的可选 reference actuator。
 - 它不会在没有当前 owner/orchestrator gate 的情况下授权修改 master plan 或执行破坏性操作。
 
 ## 安装
@@ -76,7 +76,7 @@ flowchart LR
 ## 设计原则
 
 1. `ao-state-writer` 是唯一 canonical writer。
-2. runtime transport 选择属于 profile/adapter；仓库中的 GPT Pro browser/CDP bridge 只是 reference adapter。
+2. runtime transport 选择属于 profile/adapter；仓库只附一个无品牌 reference actuator，它按契约 shell 出 profile 自有的 reviewer 命令，不打包任何具体产品 bridge。
 3. 外部 receipt 必须绑定 package hash、submission nonce、artifact hash、gate proposal 和 caller identity。
 4. 未知 schema、未知 contract version、未知 action vocabulary、non-canonical root 都必须 fail-closed。
 5. 安全时自动 repair 缺失证据；只有明确 gate、human-only 边界或 repair ladder 耗尽后才升级。

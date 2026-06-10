@@ -11,7 +11,7 @@ The core idea is deliberately small:
 - explicit action vocabulary;
 - typed blockers instead of silent stalls;
 - receipt-bound external review;
-- profile-owned transports for local CLIs, browser automation, or desktop adapters;
+- profile-owned transports for local CLIs or other external adapters;
 - compatibility checks that fail closed when schema, contract, caller identity,
   or root identity changes.
 
@@ -43,8 +43,8 @@ master-plan edits or destructive operations.
 
 - It is not an OpenAI API wrapper.
 - It is not a queue, daemon, or second state source.
-- It does not ship a universal ChatGPT Desktop controller that is safe on every
-  machine; the bundled browser/CDP bridge is a reference adapter.
+- It does not ship a product-specific reviewer; the bundled actuator is a
+  brand-neutral reference that shells out to a profile-owned reviewer command.
 - It does not grant authority to modify a user's master plan or destructive
   operations without a current owner/orchestrator gate.
 

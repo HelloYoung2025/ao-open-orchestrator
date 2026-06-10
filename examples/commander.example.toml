@@ -1,0 +1,28 @@
+# Bootstrap template for .commander/commander.toml (the standalone Commander config).
+# Rendered by scripts/bootstrap_project.py. Fill codex_worker_thread_id and reviewer_target
+# before running the Commander; doctor/brief fail loud while they are empty.
+# 引导模板：渲染为 .commander/commander.toml。运行 Commander 前请填写 codex_worker_thread_id
+# 与 reviewer_target；二者为空时 doctor/brief 会响亮失败。
+project_name = "@PROJECT_ID@"
+project_root = "."
+master_plan_path = "@PLAN_FILE@"
+todo_path = "@TODO_FILE@"
+codex_worker_thread_id = ""
+reviewer_target = ""
+heartbeat_interval_seconds = 180
+no_new_output_limit = 20
+external_review_auto_submit = true
+phase_close_auto_accept = false
+# Standalone Commander package-preparation guard. Leave false until the owner authorizes
+# package preparation for the current major phase.
+package_preparation_authorized = false
+default_next_slice_prompt = "Please start the current canonical TODO next slice."
+# Optional. When set, `submit-review` shells out to this command as
+# `<command> <package_path> <prompt_path>`. When empty, the default manual reviewer is used.
+reviewer_submit_command = ""
+
+[review]
+# Extra generic files collected into the package alongside the canonical plan/todo files.
+extra_include_names = ["AGENTS.md", "README.md"]
+include_paths = []
+exclude_patterns = [".git", ".env", ".codex", ".omx/state", "target", "node_modules", "__pycache__"]

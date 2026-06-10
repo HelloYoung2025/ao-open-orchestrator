@@ -1,3 +1,18 @@
+"""Generic escalated-review actuator (no product-specific reviewer baked in).
+
+This is the reference actuator the orchestrator dispatch (`cli.py`) invokes for an
+``escalated_review`` obligation. It is a thin, brand-neutral adapter:
+
+  stdin  : a review-job JSON (package_path, prompt_path, package_sha256, proposal_id, nonce)
+  action : verify the package sha, then shell out to a CONTRACT/ENV-configured external
+           reviewer command, which must write the raw review to <raw_out>
+  stdout : a JSON receipt (verdict / blocker_code / nonce / artifact_path / transcript_sha256)
+
+The actual reviewer is pluggable via ``AO_ESCALATED_REVIEW_ACTUATOR_SCRIPT`` (a path to an
+executable invoked as ``<script> run <package> <prompt> <raw_out> <timeout>``). There is NO
+default reviewer — if the env is unset the actuator fails loudly. Do NOT point the contract's
+``escalated_review_actuator_command`` back at this module's own env script (that would recurse).
+"""
 from __future__ import annotations
 
 from pathlib import Path
@@ -5,17 +20,10 @@ import hashlib
 import json
 import os
 import re
+import shlex
 import subprocess
 import sys
 import time
-
-
-# Resolve the review-driver script relative to this module so it is version-controlled
-# and works from any cwd.  Default is the headless browser/CDP actuator (the legacy GUI
-# desktop shell was retired); AO_GPT_PRO_DESKTOP_BRIDGE_SCRIPT can override.
-DEFAULT_BRIDGE_SCRIPT = str(
-    Path(__file__).resolve().parent / "desktop_bridge" / "chatgpt_browser_review.sh"
-)
 
 
 def main() -> int:
@@ -47,43 +55,58 @@ def main() -> int:
             3,
         )
 
-    proposal_id = str(job.get("proposal_id") or "gpt-pro-review")
+    proposal_id = str(job.get("proposal_id") or "escalated-review")
     job_nonce = job.get("external_review_submission_nonce")
     nonce = (
         job_nonce
         if isinstance(job_nonce, str) and job_nonce
-        else os.environ.get("AO_GPT_PRO_SUBMISSION_NONCE") or f"{_safe_component(proposal_id)}-{int(time.time())}"
+        else os.environ.get("AO_ESCALATED_REVIEW_SUBMISSION_NONCE")
+        or f"{_safe_component(proposal_id)}-{int(time.time())}"
     )
-    out_dir = root / "reports" / "gpt-pro-raw"
+    out_dir = root / "reports" / "escalated-review-raw"
     out_dir.mkdir(parents=True, exist_ok=True)
     raw_out = out_dir / f"{_safe_component(proposal_id)}-{_safe_component(nonce)}.txt"
 
-    bridge_script = os.environ.get("AO_GPT_PRO_DESKTOP_BRIDGE_SCRIPT", DEFAULT_BRIDGE_SCRIPT)
-    timeout = os.environ.get("AO_GPT_PRO_DESKTOP_REVIEW_TIMEOUT_SECONDS", "7200")
-    script_path = Path(bridge_script).expanduser()
+    reviewer_script = os.environ.get("AO_ESCALATED_REVIEW_ACTUATOR_SCRIPT")
+    if not reviewer_script:
+        return _emit(
+            {
+                "ok": False,
+                "error": "escalated_review_actuator_script_unset",
+                "detail": "set AO_ESCALATED_REVIEW_ACTUATOR_SCRIPT to your reviewer command",
+            },
+            3,
+        )
+    timeout = os.environ.get("AO_ESCALATED_REVIEW_TIMEOUT_SECONDS", "7200")
+    try:
+        reviewer_tokens = shlex.split(reviewer_script)
+    except ValueError as exc:
+        return _emit({"ok": False, "error": "invalid_actuator_script", "detail": str(exc)}, 3)
+    if not reviewer_tokens:
+        return _emit({"ok": False, "error": "invalid_actuator_script"}, 3)
+    script_path = Path(reviewer_tokens[0]).expanduser()
     if not script_path.exists():
-        return _emit({"ok": False, "error": "chatgpt_desktop_bridge_missing", "script": str(script_path)}, 3)
+        return _emit(
+            {"ok": False, "error": "escalated_review_actuator_missing", "script": str(script_path)},
+            3,
+        )
 
-    bridge_env = os.environ.copy()
-    bridge_env.setdefault("AO_GPT_PRO_PROPOSAL_ID", proposal_id)
-    bridge_env.setdefault("AO_GPT_PRO_SUBMISSION_NONCE", nonce)
-    bridge_env.setdefault(
-        "AO_GPT_PRO_ACTIVE_FILE_STATE",
-        f"/tmp/cg-active-{_safe_component(proposal_id)}-{_safe_component(nonce)}.txt",
-    )
+    reviewer_env = os.environ.copy()
+    reviewer_env.setdefault("AO_ESCALATED_REVIEW_PROPOSAL_ID", proposal_id)
+    reviewer_env.setdefault("AO_ESCALATED_REVIEW_SUBMISSION_NONCE", nonce)
 
     completed = subprocess.run(
-        [str(script_path), "run", str(package_path), str(prompt_path), str(raw_out), timeout],
+        [str(script_path), *reviewer_tokens[1:], "run", str(package_path), str(prompt_path), str(raw_out), timeout],
         capture_output=True,
         text=True,
         check=False,
-        env=bridge_env,
+        env=reviewer_env,
     )
     if completed.returncode != 0:
         return _emit(
             {
                 "ok": False,
-                "error": "chatgpt_desktop_bridge_failed",
+                "error": "escalated_review_actuator_failed",
                 "returncode": completed.returncode,
                 "stdout": completed.stdout,
                 "stderr": completed.stderr,
@@ -97,16 +120,12 @@ def main() -> int:
     verdict = _classify_verdict(raw_text)
     if verdict is None:
         return _emit(
-            {
-                "ok": False,
-                "error": "unrecognized_review_verdict",
-                "artifact_path": str(raw_out),
-            },
+            {"ok": False, "error": "unrecognized_review_verdict", "artifact_path": str(raw_out)},
             3,
         )
     # For blocker verdicts, derive a stable blocker_code from the response content so the
-    # bounded-repair counter distinguishes "same blocker unfixed" (same code → escalate) from
-    # "old blocker fixed, new blocker found" (new code → continue). Without this, every blocker
+    # bounded-repair counter distinguishes "same blocker unfixed" (same code -> escalate) from
+    # "old blocker fixed, new blocker found" (new code -> continue). Without this, every blocker
     # round collapses into the "unspecified" bucket and the circuit breaker mis-fires.
     blocker_code = _extract_blocker_code(raw_text) if verdict == "blocker" else None
     return _emit(
@@ -117,10 +136,10 @@ def main() -> int:
             "blocker_code": blocker_code,
             "external_review_submission_nonce": nonce,
             "artifact_path": str(raw_out),
-            "model": os.environ.get("AO_GPT_PRO_MODEL_LABEL", "ChatGPT Pro profile adapter"),
-            "model_slug": os.environ.get("AO_GPT_PRO_MODEL_SLUG", ""),
+            "model": os.environ.get("AO_ESCALATED_REVIEW_MODEL_LABEL", "escalated review actuator"),
+            "model_slug": os.environ.get("AO_ESCALATED_REVIEW_MODEL_SLUG", ""),
             "transcript_sha256": hashlib.sha256(raw_text.encode("utf-8", errors="replace")).hexdigest(),
-            "summary": f"GPT Pro review artifact captured; verdict={verdict}",
+            "summary": f"Escalated review artifact captured; verdict={verdict}",
         },
         0,
     )

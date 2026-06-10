@@ -1,0 +1,23 @@
+{
+  "name": "ao-notifier-orchestrator-poke",
+  "version": "0.1.0",
+  "description": "AO orchestrator notifier plugin: pokes the orchestrator tmux session to reconcile-from-state when a worker session needs input.",
+  "type": "module",
+  "main": "index.js",
+  "exports": { ".": "./index.js" },
+  "files": ["index.js"],
+  "license": "Apache-2.0",
+  "keywords": ["ao", "orchestrator", "notifier", "tmux", "plugin", "fail-closed"],
+  "homepage": "https://github.com/HelloYoung2025/ao-open-orchestrator/tree/main/packages/orchestrator-poke#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/HelloYoung2025/ao-open-orchestrator.git",
+    "directory": "packages/orchestrator-poke"
+  },
+  "bugs": { "url": "https://github.com/HelloYoung2025/ao-open-orchestrator/issues" },
+  "engines": { "node": ">=20.0.0" },
+  "scripts": {
+    "test": "node --test",
+    "prepublishOnly": "node prepublish-check.mjs"
+  }
+}

@@ -15,15 +15,17 @@
 - 可信 caller identity：`AO_CALLER_TYPE=codex_cc`；
 - 预期 model 和 reasoning effort；
 - `codex_cc_transcript_sha256`；
+- `codex_cc_transcript_artifact_ref`，指向 `reports/codex-cc-receipts/` 下的 repo 内 transcript
+  文件（其 sha256 必须与 `codex_cc_transcript_sha256` 匹配）；
 - evidence refs。
 
-## GPT Pro
+## escalated review
 
-已接受的 GPT Pro receipt 必须包含：
+已接受的 escalated review receipt 必须包含：
 
-- `review_scope = "gpt_pro"`；
-- `actor_role = "gpt_pro"`；
-- 可信 caller identity：`AO_CALLER_TYPE=gpt_pro_review_actuator`；
+- `review_scope = "escalated_review"`；
+- `actor_role = "escalated_review"`；
+- 可信 caller identity：`AO_CALLER_TYPE=escalated_review_actuator`；
 - 与已授权 pending package 匹配的 `package_sha256`；
 - `external_review_submission_nonce`；
 - `external_review_receipt_sha256`；

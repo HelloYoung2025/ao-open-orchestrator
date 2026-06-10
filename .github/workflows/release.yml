@@ -103,9 +103,7 @@ jobs:
           import zipfile
 
           required = {
-              "ao_state_writer/desktop_bridge/chatgpt_browser_review.py",
-              "ao_state_writer/desktop_bridge/chatgpt_browser_review.sh",
-              "ao_state_writer/desktop_bridge/README.md",
+              "ao_state_writer/escalated_review_actuator.py",
           }
           wheels = list(pathlib.Path("dist").glob("ao_open_orchestrator-*.whl"))
           sdists = list(pathlib.Path("dist").glob("ao_open_orchestrator-*.tar.gz"))

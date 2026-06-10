@@ -38,10 +38,11 @@ Three responsibilities are deliberately separated (see [docs/ARCHITECTURE.md](do
    does not keep a process alive; its guarantee is scoped only to ticks it receives.
 2. **Canonical state** — [`StateWriter.apply()`](src/ao_state_writer/writer.py) is the
    *single* writer for all state transitions and review receipts.
-3. **Profile transport** — local CLIs, browser, or desktop adapters do external work and
-   return bounded, typed artifacts. The bundled GPT Pro browser/CDP bridge
-   (`src/ao_state_writer/gpt_pro_desktop_bridge.py`, `desktop_bridge/`) is a *reference
-   adapter*, not safe on every machine.
+3. **Profile transport** — local CLIs or other adapters do external work and
+   return bounded, typed artifacts. The bundled
+   [`escalated_review_actuator.py`](src/ao_state_writer/escalated_review_actuator.py) is a
+   *brand-neutral reference* that shells out to a profile-owned reviewer command; no
+   product-specific bridge is bundled.
 
 Module map under `src/ao_state_writer/`:
 
@@ -50,8 +51,8 @@ Module map under `src/ao_state_writer/`:
   orchestrator-authorization API.
 - [`cli.py`](src/ao_state_writer/cli.py) — argparse entrypoint (`main`). Subcommands:
   `apply`, `continue`, `dispatch`, `list-ready`, `list-gated`, `reconcile-once`,
-  `review-job`, `gpt-pro-actuate`, `authorize`, `preflight`, `repair-todo`, `watchdog`.
-  Also `preflight_reconcile` (the shared read-only fail-closed guard) and GPT Pro actuation.
+  `review-job`, `escalated-review-actuate`, `authorize`, `preflight`, `repair-todo`, `watchdog`.
+  Also `preflight_reconcile` (the shared read-only fail-closed guard) and escalated review actuation.
 - [`continuation.py`](src/ao_state_writer/continuation.py) — the action vocabulary
   (`AUTO_SPAWN_ACTIONS` / `GATED_ACTIONS` / `NON_EXECUTABLE_ACTIONS`), prompt rendering,
   and the actual `ao spawn` subprocess.
@@ -77,19 +78,19 @@ Canonical state lives at `<root>/.omx/state/ao-state-writer/{state.json,state-tr
 - **Caller identity is environment-injected, never self-asserted.** Orchestrator
   authorization requires `AO_CALLER_TYPE=orchestrator` *and* a session matching the contract's
   `continuation_policy.orchestrator_session`; review receipts require the scope's expected
-  caller type (`codex_cc`, `gpt_pro_review_actuator`, `watchdog`). See `CALLER_TYPE_ENV` /
+  caller type (`codex_cc`, `escalated_review_actuator`, `watchdog`). See `CALLER_TYPE_ENV` /
   `SESSION_ID_ENV` in `compat.py`.
 - **The action-vocabulary tuples in `continuation.py` are a compatibility contract.** If you
   change `AUTO_SPAWN_ACTIONS` / `GATED_ACTIONS` / `NON_EXECUTABLE_ACTIONS`, you must also update
   `[continuation_policy]` in `examples/DIRECT_PROJECT_CONTRACT.example.toml` and the tests — a
   divergence is rejected as `contract_action_vocabulary_mismatch`.
 - **`proposal_results` is append-only audit history, not a queue.** Live obligations are
-  recomputed (latest accepted revision per target, live GPT Pro gate pointer); do not treat it
+  recomputed (latest accepted revision per target, live escalated review gate pointer); do not treat it
   as a worklist.
-- **GPT Pro receipts are cryptographically bound** to package sha256, submission nonce, artifact
+- **escalated review receipts are cryptographically bound** to package sha256, submission nonce, artifact
   sha256, gate proposal id, and caller identity; artifacts must resolve under `<root>/reports/`
   (path traversal is rejected). Major closure independently re-validates the receipt verdict
-  (`_gpt_pro_closure_receipt_guard` in `cli.py`).
+  (`_escalated_review_closure_receipt_guard` in `cli.py`).
 - **CLI exit codes are part of the contract:** `0` success/no-op, `2` rejected proposal/receipt,
   `3` fail-closed blocker (compat/preflight/authorization), `4` unknown/ambiguous proposal id.
 - **Keep `dependencies = []` in `pyproject.toml`.** This core intentionally has no third-party

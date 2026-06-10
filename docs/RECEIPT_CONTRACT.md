@@ -18,15 +18,17 @@ An accepted pass-family Codex cc receipt must include:
 - trusted caller identity `AO_CALLER_TYPE=codex_cc`;
 - expected model and reasoning effort;
 - `codex_cc_transcript_sha256`;
+- `codex_cc_transcript_artifact_ref` pointing to the repo-local transcript under
+  `reports/codex-cc-receipts/` (its sha256 must match `codex_cc_transcript_sha256`);
 - evidence refs.
 
-## GPT Pro
+## escalated review
 
-An accepted GPT Pro receipt must include:
+An accepted escalated review receipt must include:
 
-- `review_scope = "gpt_pro"`;
-- `actor_role = "gpt_pro"`;
-- trusted caller identity `AO_CALLER_TYPE=gpt_pro_review_actuator`;
+- `review_scope = "escalated_review"`;
+- `actor_role = "escalated_review"`;
+- trusted caller identity `AO_CALLER_TYPE=escalated_review_actuator`;
 - `package_sha256` matching the authorized pending package;
 - `external_review_submission_nonce`;
 - `external_review_receipt_sha256`;

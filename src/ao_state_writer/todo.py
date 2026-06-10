@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import re
+
 
 COMPACT_CURRENT_STATE_FIELDS = (
     "current_phase",
@@ -7,6 +9,8 @@ COMPACT_CURRENT_STATE_FIELDS = (
     "review_gate_state",
     "latest_session_log_anchor",
 )
+CURRENT_STATE_HEADING = "## Current Execution State"
+CURRENT_STATE_HEADING_RE = re.compile(r"(?m)^## Current Execution State\s*$")
 
 LEGACY_CURRENT_STATE_FIELDS = {
     "current_next_slice",
@@ -59,18 +63,23 @@ def repair_compact_current_state(
     review_gate_state: str,
     latest_session_log_anchor: str,
 ) -> str:
-    start_marker = "## Current Execution State"
+    matches = list(CURRENT_STATE_HEADING_RE.finditer(todo_text))
+    marker_count = len(matches)
+    if marker_count == 0:
+        raise ValueError("missing_current_execution_state_section")
+    if marker_count > 1:
+        raise ValueError("multiple_current_execution_state_sections")
     compact = render_compact_current_state(
         current_phase=current_phase,
         next_locked_action=next_locked_action,
         review_gate_state=review_gate_state,
         latest_session_log_anchor=latest_session_log_anchor,
     )
-    replacement = f"{start_marker}\n\n{compact}\n"
-    if start_marker not in todo_text:
-        return todo_text.rstrip() + "\n\n" + replacement
+    replacement = f"{CURRENT_STATE_HEADING}\n\n{compact}\n"
 
-    before, rest = todo_text.split(start_marker, 1)
+    match = matches[0]
+    before = todo_text[: match.start()]
+    rest = todo_text[match.end() :]
     next_heading = rest.find("\n## ")
     if next_heading == -1:
         return before + replacement

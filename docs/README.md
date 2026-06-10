@@ -4,6 +4,7 @@
 
 | 主题 | 中文 | English |
 | --- | --- | --- |
+| 快速开始 | [QUICKSTART.zh-CN.md](QUICKSTART.zh-CN.md) | [QUICKSTART.md](QUICKSTART.md) |
 | 架构 | [ARCHITECTURE.zh-CN.md](ARCHITECTURE.zh-CN.md) | [ARCHITECTURE.md](ARCHITECTURE.md) |
 | 兼容边界 | [COMPATIBILITY.zh-CN.md](COMPATIBILITY.zh-CN.md) | [COMPATIBILITY.md](COMPATIBILITY.md) |
 | 外部审查 receipt | [RECEIPT_CONTRACT.zh-CN.md](RECEIPT_CONTRACT.zh-CN.md) | [RECEIPT_CONTRACT.md](RECEIPT_CONTRACT.md) |
@@ -16,3 +17,4 @@
 3. 读 [RECEIPT_CONTRACT.zh-CN.md](RECEIPT_CONTRACT.zh-CN.md)，确认外部审查如何成为 canonical evidence。
 4. 读 [COMPATIBILITY.zh-CN.md](COMPATIBILITY.zh-CN.md)，确认版本升级时为什么必须 fail-closed。
 5. 读 [UNATTENDED_LOOP.zh-CN.md](UNATTENDED_LOOP.zh-CN.md)，确认无人值守推进的边界。
+6. 想直接上手：读 [QUICKSTART.zh-CN.md](QUICKSTART.zh-CN.md)，用 bootstrap 在新目录开展一个项目。

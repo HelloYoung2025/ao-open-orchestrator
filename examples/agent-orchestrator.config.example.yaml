@@ -1,0 +1,31 @@
+# Example AO config (~/.agent-orchestrator/config.yaml fragment) showing how to register a project
+# and wire the orchestrator-poke notifier so the loop self-propels. Replace every @…@ placeholder.
+# Companion files in this directory: orchestrator-liveness.sh (sidecar) and
+# com.example.ao-orchestrator-liveness.plist.tmpl (its launchd template).
+#
+# The orchestrator-poke notifier config keys match the published package
+# (ao-notifier-orchestrator-poke): sessionPrefix / orchestratorSession / activeRoot /
+# stateWriterCommand / projectIds. MACHINERY is decoupled from ACTIVE_ROOT: stateWriterCommand is the
+# engine command (default: the installed ao-state-writer console script); activeRoot is the project
+# state dir passed to it as --root.
+projects:
+  "@PROJECT_ID@":
+    projectId: "@PROJECT_ID@"
+    path: "@ACTIVE_ROOT@"
+    repo:
+      owner: "@REPO_OWNER@"
+      name: "@REPO_NAME@"
+      platform: github
+    sessionPrefix: "@SESSION_PREFIX@"
+notifiers:
+  orchestrator-poke:
+    plugin: orchestrator-poke
+    sessionPrefix: "@SESSION_PREFIX@"
+    orchestratorSession: "@ORCHESTRATOR_SESSION@"
+    activeRoot: "@ACTIVE_ROOT@"
+    stateWriterCommand: "@STATE_WRITER_CMD@"
+    projectIds:
+      - "@PROJECT_ID@"
+notificationRouting:
+  urgent:
+    - orchestrator-poke

@@ -23,12 +23,12 @@ alpha 阶段只支持当前 `main` 分支。
 state writer 会拒绝：
 
 - 没有可信 caller identity 的自声明外部审查 actor；
-- 没有绑定 package hash、nonce、artifact hash、gate proposal 的 GPT Pro receipt；
+- 没有绑定 package hash、nonce、artifact hash、gate proposal 的 escalated review receipt；
 - `artifact:reports/...` 之外的 artifact ref；
 - 不支持的 state schema 或 contract version；
 - 未知 action vocabulary；
 - non-canonical root。
 
-`AO_CALLER_TYPE` 和 `AO_SESSION_ID` 是本地绑定提示，不是通用认证系统。不要把 `ao-state-writer`、`gpt-pro-actuate` 或 adapter 命令直接暴露成网络服务；如果必须远程调用，请先增加独立认证、授权、审计和 OS-level 隔离。
+`AO_CALLER_TYPE` 和 `AO_SESSION_ID` 是本地绑定提示，不是通用认证系统。不要把 `ao-state-writer`、`escalated-review-actuate` 或 adapter 命令直接暴露成网络服务；如果必须远程调用，请先增加独立认证、授权、审计和 OS-level 隔离。
 
 请不要公开 raw `.omx` state、本地 transcript、桌面对话 id、session id、账号绑定日志、机器专属路径或任何 secret。

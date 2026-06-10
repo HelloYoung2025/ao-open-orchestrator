@@ -25,7 +25,7 @@ def test_release_workflows_are_manual_and_fail_closed() -> None:
     assert "version mismatch" in release_text
 
 
-def test_wheel_contains_reference_desktop_bridge(tmp_path: Path) -> None:
+def test_wheel_contains_escalated_review_actuator(tmp_path: Path) -> None:
     wheelhouse = tmp_path / "wheelhouse"
     wheelhouse.mkdir()
 
@@ -52,7 +52,8 @@ def test_wheel_contains_reference_desktop_bridge(tmp_path: Path) -> None:
     with zipfile.ZipFile(wheels[0]) as wheel:
         names = set(wheel.namelist())
 
-    assert "ao_state_writer/desktop_bridge/README.md" in names
-    assert "ao_state_writer/desktop_bridge/chatgpt_browser_review.py" in names
-    assert "ao_state_writer/desktop_bridge/chatgpt_browser_review.sh" in names
+    assert "ao_state_writer/escalated_review_actuator.py" in names
+    # The brand-neutral actuator shells out to a user-configured reviewer; no driver shell
+    # scripts ship in the public wheel (the retired product bridge was a .sh driver).
+    assert not any(name.endswith(".sh") for name in names)
     assert "ao_open_orchestrator-0.2.0.dist-info/entry_points.txt" in names

@@ -12,12 +12,21 @@ from .writer import ACCEPTED_ADVISORY_VERDICTS, StateTransitionProposal
 
 
 DIAGNOSTIC_ACTIVITY_KINDS = {"diagnostic_lsp", "heavy_static"}
-GPT_PRO_WARNING_MINUTES = 30.0
-GPT_PRO_LONG_WAIT_MINUTES = 60.0
-GPT_PRO_UNCERTAIN_MINUTES = 90.0
-GPT_PRO_HARD_TIMEOUT_MINUTES = 120.0
+ESCALATED_REVIEW_WARNING_MINUTES = 30.0
+ESCALATED_REVIEW_LONG_WAIT_MINUTES = 60.0
+ESCALATED_REVIEW_UNCERTAIN_MINUTES = 90.0
+ESCALATED_REVIEW_HARD_TIMEOUT_MINUTES = 120.0
 ORDINARY_TIMEOUT_MINUTES = 15.0
 DIAGNOSTIC_TIMEOUT_MINUTES = 20.0
+# The target state in which a review of the given scope is ACTIVELY in flight (vs concluded). A
+# pass-family receipt always moves the target to closure_candidate, so a pass can never coexist with the
+# same review still active; while the target sits in its scope's active-review state any recorded pass is
+# from a PRIOR concluded round (append-only review_receipts carry no per-round id) and must NOT suppress
+# the watchdog timeout (F3 — stale pass false quiescence on a stalled re-review).
+_ACTIVE_REVIEW_STATE_BY_SCOPE = {
+    "codex_cc": "evidence_pending",
+    "escalated_review": "escalated_review_pending",
+}
 
 
 @dataclass(frozen=True)
@@ -106,7 +115,14 @@ def evaluate_watchdog(
     if target_state == "closed":
         return _decision("no_action", "target_closed", observation, target_state, receipts, elapsed)
 
-    if _has_receipt(receipts, observation.review_scope):
+    # F3: a recorded pass-family receipt suppresses the timeout ONLY once the review has concluded. If
+    # the target is back in its scope's active-review state a NEW round is in flight and the matched pass
+    # is from a prior concluded round, so it must NOT blind the watchdog to the stalled re-review. A
+    # concluded target (closure_candidate / review_blocked / ... — anything but the active-review state;
+    # `closed` already returned above) still suppresses a late/duplicate observation.
+    if target_state != _ACTIVE_REVIEW_STATE_BY_SCOPE.get(observation.review_scope) and _has_receipt(
+        receipts, observation.review_scope
+    ):
         return _decision(
             "no_action",
             "review_receipt_already_recorded",
@@ -119,8 +135,8 @@ def evaluate_watchdog(
     if observation.review_scope == "codex_cc":
         return _evaluate_codex_cc(state, observation, target_state, receipts, elapsed)
 
-    if observation.review_scope == "gpt_pro":
-        return _evaluate_gpt_pro(state, observation, target_state, receipts, elapsed)
+    if observation.review_scope == "escalated_review":
+        return _evaluate_escalated_review(state, observation, target_state, receipts, elapsed)
 
     return _decision(
         "no_action",
@@ -144,6 +160,19 @@ def write_proposal(path: Path, decision: ReviewWatchdogDecision) -> bool:
     return True
 
 
+def codex_cc_stall_threshold_minutes(prior_timeouts: int, *, is_diagnostic: bool = False) -> float:
+    """Staged codex_cc review-timeout threshold in minutes.
+
+    Each PRIOR ``codex_cc_review_timeout`` on the target widens the wait 1x -> 2x -> 3x
+    (15 -> 30 -> 45 min, capped at 3x; diagnostic waits use the 20-min base) so a genuinely slow
+    review gets progressively more time instead of being retried under the same ceiling it just blew.
+    SHARED so the watchdog (which produces the timeout blocker proposal) and the cli.py preflight
+    stall check stay in lock-step on the exact elapsed point a timeout is due (AO-002).
+    """
+    base = DIAGNOSTIC_TIMEOUT_MINUTES if is_diagnostic else ORDINARY_TIMEOUT_MINUTES
+    return base * min(prior_timeouts + 1, 3)
+
+
 def _evaluate_codex_cc(
     state: dict[str, Any],
     observation: ReviewWatchdogObservation,
@@ -151,7 +180,19 @@ def _evaluate_codex_cc(
     receipts: list[dict[str, Any]],
     elapsed: float,
 ) -> ReviewWatchdogDecision:
-    threshold = DIAGNOSTIC_TIMEOUT_MINUTES if _is_diagnostic_wait(observation) else ORDINARY_TIMEOUT_MINUTES
+    # Staged escalation: each prior codex_cc_review_timeout on this target widens the wait via the
+    # SHARED codex_cc_stall_threshold_minutes() (AO-002) so a genuinely slow review gets progressively
+    # more time instead of being retried under the ceiling it just blew. Content blockers (other
+    # blocker_codes) do NOT widen the timeout.
+    prior_timeouts = int(
+        state.get("targets", {})
+        .get(observation.target_id, {})
+        .get("repair_attempts", {})
+        .get("codex_cc_review_timeout", 0)
+    )
+    threshold = codex_cc_stall_threshold_minutes(
+        prior_timeouts, is_diagnostic=_is_diagnostic_wait(observation)
+    )
     if elapsed < threshold:
         return _decision(
             "in_progress",
@@ -189,93 +230,93 @@ def _evaluate_codex_cc(
     )
 
 
-def _evaluate_gpt_pro(
+def _evaluate_escalated_review(
     state: dict[str, Any],
     observation: ReviewWatchdogObservation,
     target_state: str | None,
     receipts: list[dict[str, Any]],
     elapsed: float,
 ) -> ReviewWatchdogDecision:
-    if elapsed >= GPT_PRO_HARD_TIMEOUT_MINUTES:
-        blocker_code = "gpt_pro_review_hard_timeout"
+    if elapsed >= ESCALATED_REVIEW_HARD_TIMEOUT_MINUTES:
+        blocker_code = "escalated_review_hard_timeout"
         proposal = _timeout_proposal(
             state=state,
             observation=observation,
-            actor_role="gpt_pro",
+            actor_role="escalated_review",
             target_kind=observation.target_kind or "major_chapter",
             blocker_code=blocker_code,
-            blocker_detail="GPT Pro desktop review exceeded the hard timeout without a receipt.",
+            blocker_detail="escalated review exceeded the hard timeout without a receipt.",
         )
         return _decision(
             "timeout_candidate",
-            "gpt_pro_hard_timeout_without_receipt",
+            "escalated_review_hard_timeout_without_receipt",
             observation,
             target_state,
             receipts,
             elapsed,
-            threshold=GPT_PRO_HARD_TIMEOUT_MINUTES,
+            threshold=ESCALATED_REVIEW_HARD_TIMEOUT_MINUTES,
             blocker_code=blocker_code,
-            next_required_action="desktop_review_recovery_or_repair_active",
+            next_required_action="review_recovery_or_repair_active",
             proposal=asdict(proposal),
         )
 
-    if elapsed >= GPT_PRO_UNCERTAIN_MINUTES:
-        blocker_code = "gpt_pro_desktop_uncertain"
+    if elapsed >= ESCALATED_REVIEW_UNCERTAIN_MINUTES:
+        blocker_code = "escalated_review_uncertain"
         proposal = _timeout_proposal(
             state=state,
             observation=observation,
-            actor_role="gpt_pro",
+            actor_role="escalated_review",
             target_kind=observation.target_kind or "major_chapter",
             blocker_code=blocker_code,
-            blocker_detail="GPT Pro desktop review exceeded the uncertainty threshold without a receipt.",
+            blocker_detail="escalated review exceeded the uncertainty threshold without a receipt.",
         )
         return _decision(
             "uncertain_candidate",
-            "gpt_pro_desktop_uncertain_without_receipt",
+            "escalated_review_uncertain_without_receipt",
             observation,
             target_state,
             receipts,
             elapsed,
-            threshold=GPT_PRO_UNCERTAIN_MINUTES,
+            threshold=ESCALATED_REVIEW_UNCERTAIN_MINUTES,
             blocker_code=blocker_code,
-            next_required_action="desktop_review_recovery_or_typed_blocker",
+            next_required_action="review_recovery_or_typed_blocker",
             proposal=asdict(proposal),
         )
 
-    if elapsed >= GPT_PRO_LONG_WAIT_MINUTES:
+    if elapsed >= ESCALATED_REVIEW_LONG_WAIT_MINUTES:
         return _decision(
             "long_wait",
-            "gpt_pro_review_long_wait_without_receipt",
+            "escalated_review_long_wait_without_receipt",
             observation,
             target_state,
             receipts,
             elapsed,
-            threshold=GPT_PRO_LONG_WAIT_MINUTES,
-            blocker_code="gpt_pro_review_long_wait",
-            next_required_action="poll_existing_gpt_pro_review",
+            threshold=ESCALATED_REVIEW_LONG_WAIT_MINUTES,
+            blocker_code="escalated_review_long_wait",
+            next_required_action="poll_existing_escalated_review",
         )
 
-    if elapsed >= GPT_PRO_WARNING_MINUTES:
+    if elapsed >= ESCALATED_REVIEW_WARNING_MINUTES:
         return _decision(
             "warning",
-            "gpt_pro_review_warning_without_receipt",
+            "escalated_review_warning_without_receipt",
             observation,
             target_state,
             receipts,
             elapsed,
-            threshold=GPT_PRO_WARNING_MINUTES,
-            next_required_action="poll_existing_gpt_pro_review",
+            threshold=ESCALATED_REVIEW_WARNING_MINUTES,
+            next_required_action="poll_existing_escalated_review",
         )
 
     return _decision(
         "in_progress",
-        "gpt_pro_within_timeout",
+        "escalated_review_within_timeout",
         observation,
         target_state,
         receipts,
         elapsed,
-        threshold=GPT_PRO_WARNING_MINUTES,
-        next_required_action="wait_for_gpt_pro_receipt",
+        threshold=ESCALATED_REVIEW_WARNING_MINUTES,
+        next_required_action="wait_for_escalated_review_receipt",
     )
 
 

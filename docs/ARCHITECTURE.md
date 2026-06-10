@@ -5,10 +5,11 @@ AO Open Orchestrator separates three responsibilities:
 1. Runtime wakeup: an AO-like runtime decides when to call the CLI.
 2. Canonical state: `StateWriter.apply()` is the only writer for state
    transitions and review receipts.
-3. Profile transport: local CLIs, browser automation, or desktop adapters do
-   external work and return bounded artifacts. This repository includes a
-   reference GPT Pro browser/CDP adapter, but deployment-specific transport
-   choice still belongs in a private profile/contract.
+3. Profile transport: local CLIs or other adapters do external work and return
+   bounded artifacts. This repository ships a brand-neutral reference actuator
+   that shells out to a profile-owned reviewer command; no product-specific bridge
+   is bundled, and the deployment-specific transport choice belongs in a private
+   profile/contract.
 
 The core does not assume that any transport is always available. A failed
 adapter must return a typed failure or submit a blocker proposal through the
@@ -47,7 +48,7 @@ ticks it actually receives.
 
 ## Gate Semantics
 
-Not every gate is human-only. GPT Pro review uses an orchestrator/owner-proxy
+Not every gate is human-only. escalated review uses an orchestrator/owner-proxy
 authorization path. Human-owner intervention is reserved for actions the
 project contract names as human-only, such as master-plan edits or destructive
 operations.
