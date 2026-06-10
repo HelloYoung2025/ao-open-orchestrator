@@ -5,6 +5,8 @@
 | 主题 | 中文 | English |
 | --- | --- | --- |
 | 快速开始 | [QUICKSTART.zh-CN.md](QUICKSTART.zh-CN.md) | [QUICKSTART.md](QUICKSTART.md) |
+| 使用说明（日常操作） | [USAGE.zh-CN.md](USAGE.zh-CN.md) | [USAGE.md](USAGE.md) |
+| 多项目并行 | [MULTI_PROJECT.zh-CN.md](MULTI_PROJECT.zh-CN.md) | [MULTI_PROJECT.md](MULTI_PROJECT.md) |
 | 架构 | [ARCHITECTURE.zh-CN.md](ARCHITECTURE.zh-CN.md) | [ARCHITECTURE.md](ARCHITECTURE.md) |
 | 兼容边界 | [COMPATIBILITY.zh-CN.md](COMPATIBILITY.zh-CN.md) | [COMPATIBILITY.md](COMPATIBILITY.md) |
 | 外部审查 receipt | [RECEIPT_CONTRACT.zh-CN.md](RECEIPT_CONTRACT.zh-CN.md) | [RECEIPT_CONTRACT.md](RECEIPT_CONTRACT.md) |
@@ -18,3 +20,5 @@
 4. 读 [COMPATIBILITY.zh-CN.md](COMPATIBILITY.zh-CN.md)，确认版本升级时为什么必须 fail-closed。
 5. 读 [UNATTENDED_LOOP.zh-CN.md](UNATTENDED_LOOP.zh-CN.md)，确认无人值守推进的边界。
 6. 想直接上手：读 [QUICKSTART.zh-CN.md](QUICKSTART.zh-CN.md)，用 bootstrap 在新目录开展一个项目。
+7. 项目建好之后的日常：读 [USAGE.zh-CN.md](USAGE.zh-CN.md)——命令手册、踢醒方法、排障表。
+8. 同机多个项目：读 [MULTI_PROJECT.zh-CN.md](MULTI_PROJECT.zh-CN.md)。
