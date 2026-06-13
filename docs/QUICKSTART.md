@@ -15,6 +15,33 @@ This installs the `ao-state-writer` and `ao-commander` console scripts. The engi
 renders invoke the engine via `@STATE_WRITER_CMD@` (default: the installed `ao-state-writer`)
 with `--root <active_root>`.
 
+## One-click alternative: the launch page
+
+Steps 2-6 can also be driven from a local web form:
+
+Double-click `launch-ui.command` in Finder (macOS), or run:
+
+```bash
+python3 scripts/launch_ui.py
+```
+
+Either way the form opens in your default browser automatically (127.0.0.1, random port).
+
+The page has two modes: **new project** (renders the full scaffold into a fresh directory)
+and **adopt existing project** (your project already has its own plan/TODO under any
+filenames). Adoption is strictly copy-if-absent: it only adds the missing AO artifacts
+(brain yaml, sidecar, plist — and the AO contract only if `DIRECT_PROJECT_CONTRACT.toml`
+is absent) and never overwrites an existing file; your plan and TODO are required to
+already exist and are never written.
+
+Fill in the project info, product goal, and first slice, then launch. Every step is
+fail-closed: the first failure stops the run and shows exactly what already happened
+plus the rollback anchor. Two deliberate boundaries: the page only AUTO-CREATES
+`~/.agent-orchestrator/config.yaml` when it is absent or empty — any existing content
+falls back to step 3's manual paste (see [MULTI_PROJECT.md](MULTI_PROJECT.md)); and the
+form is the one-time authoring surface for `MASTER_PLAN.md` — after launch the file is
+yours alone (step 4's gate still applies).
+
 ## 2. Render a new project
 
 > **Note: bootstrap is a source-checkout-only script — it is not shipped in the wheel.** The engine

@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import argparse
 import re
+import shutil
 import sys
 from pathlib import Path
 
@@ -182,11 +183,18 @@ def parse_args(argv=None) -> argparse.Namespace:
     p.add_argument("--state-writer-cmd", default="ao-state-writer")
     p.add_argument("--python-bin", default="python3")
     p.add_argument("--home", default=None, help="default: the current user's home")
-    p.add_argument("--path", default="/usr/local/bin:/usr/bin:/bin",
-                   help="PATH the sidecar runs with; MUST include node, `ao`, and the engine command")
+    p.add_argument("--path", default=None,
+                   help="PATH the sidecar runs with; MUST include node, `ao`, and the engine command. "
+                        "Default: composed from where tmux/ao/node/the engine/python actually resolve "
+                        "right now, plus <home>/.npm-global/bin, <home>/.local/bin and the system dirs "
+                        "(launchd does NOT inherit the user shell PATH)")
     p.add_argument("--label", default=None, help="launchd label / plist stem; default: ao-orchestrator-liveness.<project-id>")
     p.add_argument("--log-file", default=None)
-    p.add_argument("--sidecar-path", default=None, help="default: <target>/orchestrator-liveness.sh")
+    p.add_argument("--sidecar-path", default=None,
+                   help="install path the plist EXECUTES (the script itself is still rendered into "
+                        "<target>; copy it here before loading the plist). Default: "
+                        "<home>/.agent-orchestrator/<project-id>-orchestrator-liveness.sh — NOT inside "
+                        "the project: macOS TCC blocks launchd from executing under ~/Documents")
     return p.parse_args(argv)
 
 
@@ -202,8 +210,36 @@ def finalize_args(args: argparse.Namespace, resolved_target: Path) -> argparse.N
         args.label = f"ao-orchestrator-liveness.{args.project_id}"
     if args.log_file is None:
         args.log_file = str(Path(args.home) / ".agent-orchestrator" / f"{args.project_id}-orchestrator-liveness.log")
+    if args.path is None:
+        # launchd agents run with a minimal PATH; the user's shell PATH is never inherited.
+        # Missing tmux made a live sidecar misjudge "orchestrator absent" (duplicate-revival
+        # risk), and a missing engine command blinded its canonical sweep (2026-06-12).
+        # Compose the PATH from where the critical commands ACTUALLY resolve right now —
+        # this covers any Homebrew prefix, npm-global, and pipx without baking one
+        # machine's install layout into rendered artifacts.
+        dirs: list[str] = []
+        # "claude"/"codex" are the agent binaries the revive launch script execs — a PATH
+        # that resolves ao but not the agent revives a DEAD orchestrator pane (live failure
+        # 2026-06-12: `claude: command not found` after a guarded restart).
+        for cmd in ("tmux", "ao", "node", "claude", "codex",
+                    args.state_writer_cmd.split()[0], args.python_bin):
+            hit = shutil.which(cmd)
+            if hit:
+                d = str(Path(hit).parent)
+                if d not in dirs:
+                    dirs.append(d)
+        for d in (str(Path(args.home) / ".npm-global" / "bin"),
+                  str(Path(args.home) / ".local" / "bin"),
+                  "/usr/local/bin", "/usr/bin", "/bin"):
+            if d not in dirs:
+                dirs.append(d)
+        args.path = ":".join(dirs)
     if args.sidecar_path is None:
-        args.sidecar_path = str(resolved_target / "orchestrator-liveness.sh")
+        # The plist must execute the sidecar from OUTSIDE the project: macOS TCC denies
+        # launchd execution under ~/Documents (live exit 126, 2026-06-12).
+        args.sidecar_path = str(
+            Path(args.home) / ".agent-orchestrator" / f"{args.project_id}-orchestrator-liveness.sh"
+        )
     return args
 
 

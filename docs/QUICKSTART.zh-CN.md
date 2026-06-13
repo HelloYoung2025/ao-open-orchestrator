@@ -13,6 +13,29 @@ pip install ao-open-orchestrator
 与项目状态目录（ACTIVE_ROOT）是解耦的：bootstrap 渲染出的文件用
 `@STATE_WRITER_CMD@`（默认就是已安装的 `ao-state-writer`）配合 `--root <active_root>` 调用引擎。
 
+## 一键替代：启动页
+
+第 2-6 步也可以用本地网页表单一键完成：
+
+在 Finder 里双击仓库根目录的 `launch-ui.command`（macOS），或在终端运行：
+
+```bash
+python3 scripts/launch_ui.py
+```
+
+两种方式都会自动在默认浏览器打开表单（127.0.0.1，随机端口）。
+
+页面有两种模式：**从零新建**（向全新目录渲染完整脚手架）和**接管已有项目**（项目里已经
+有自己的计划/TODO，文件名随意）。接管严格执行"缺什么补什么"：只补缺失的 AO 工件
+（brain yaml、sidecar、plist——仅当 `DIRECT_PROJECT_CONTRACT.toml` 不存在时才补 AO 契约），
+绝不覆盖任何已有文件；你的计划和 TODO 必须已存在，且永远不会被写入。
+
+填好项目信息、产品目标和第一个切片后点启动。每一步都 fail-closed：第一处失败立即停下，
+并显示已发生的步骤和回滚锚。两条刻意的边界：启动页只在 `~/.agent-orchestrator/config.yaml`
+不存在或为空时**自动创建**——已有任何内容都会退回第 3 步的手工粘贴（见
+[MULTI_PROJECT.zh-CN.md](MULTI_PROJECT.zh-CN.md)）；表单是 `MASTER_PLAN.md` 的一次性
+撰写入口——启动之后该文件只归你改（第 4 步的人类门照旧生效）。
+
 ## 2. 渲染一个新项目
 
 > **注意：bootstrap 是源码 checkout 专用脚本，不随 wheel 安装。** 引擎（`ao-state-writer`/
