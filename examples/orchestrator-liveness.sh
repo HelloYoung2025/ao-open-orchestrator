@@ -124,6 +124,14 @@ CANON_CATEGORY=""
 CANON_SIGNATURE=""
 
 log "orchestrator-liveness started. orchestrator=${ORCHESTRATOR_SESSION} project=${PROJECT_ID} interval=${INTERVAL_S}s cooldown=${COOLDOWN_S}s max_failures=${MAX_CONSECUTIVE_FAILURES}"
+# Log resolved command paths at startup: launchd's PATH is minimal and NOT the user
+# shell's — an unresolvable command here silently blinds a whole detection leg (a missing
+# tmux made a live sidecar misjudge "orchestrator absent", 2026-06-12). One line per tool
+# makes version/install drift auditable from the log alone.
+for _cmd in tmux ao "${PYTHON_BIN}"; do
+  log "resolve ${_cmd} -> $(command -v "${_cmd}" 2>/dev/null || echo MISSING)"
+done
+log "resolve state-writer (${STATE_WRITER_CMD%% *}) -> $(command -v "${STATE_WRITER_CMD%% *}" 2>/dev/null || echo MISSING-or-shell-fragment)"
 if [ ! -d "$SESSIONS_DIR" ]; then
   log "WARN  AO sessions dir not found (${SESSIONS_DIR}); present-but-stuck detection will be unavailable until this path exists or SESSIONS_DIR is set."
 fi

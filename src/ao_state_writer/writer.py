@@ -441,6 +441,38 @@ class StateWriter:
                 artifact_rejection = self._external_review_artifact_rejection(proposal)
                 if artifact_rejection is not None:
                     return self._reject(proposal, state, artifact_rejection)
+        if proposal.requested_state == "historical_closed":
+            # Bootstrap-import lane: record an ALREADY-completed slice as closed so a fresh
+            # (or fully-parked) machine can seed dispatch_next_slice_plan_mode without forging
+            # review receipts — normal `closed` stays receipt-gated below. Imports record a
+            # historical fact only; they are NOT a closure path for in-flight work, so the lane
+            # is closed the moment any target is mid-flight. Gates, in rejection order:
+            # no review fields (a receipt on an import would counterfeit the receipt chain),
+            # mandatory evidence (canonical TODO / PR / session-log anchors), new target only,
+            # idle machine only, modeled chapter kinds only — and orchestrator-caller-only
+            # (same AO_CALLER_TYPE + orchestrator-proof standard as record_authorization;
+            # actor_role is self-asserted and proves nothing, so a worker could otherwise
+            # mint a closed chapter plus a dispatch obligation — cross-review HIGH).
+            if os.environ.get(CALLER_TYPE_ENV) != "orchestrator":
+                return self._reject(
+                    proposal, state, "historical_closed_requires_orchestrator_caller"
+                )
+            if self._orchestrator_proof_metadata().get("reason"):
+                return self._reject(
+                    proposal, state, "missing_or_stale_orchestrator_proof"
+                )
+            if proposal.review_scope != "none" or proposal.verdict is not None:
+                return self._reject(proposal, state, "historical_closed_carries_review_fields")
+            if not [r for r in (proposal.evidence_refs or []) if str(r).strip()]:
+                return self._reject(proposal, state, "historical_closed_requires_evidence")
+            if proposal.target_id in state.get("targets", {}):
+                return self._reject(proposal, state, "historical_closed_target_exists")
+            if any(
+                t.get("state") != "closed" for t in state.get("targets", {}).values()
+            ):
+                return self._reject(proposal, state, "historical_closed_requires_idle_machine")
+            if proposal.target_kind not in ("small_chapter", "major_chapter"):
+                return self._reject(proposal, state, "historical_closed_kind_invalid")
         if (
             proposal.target_kind == "small_chapter"
             and proposal.requested_state == "closed"
@@ -623,6 +655,11 @@ class StateWriter:
             requested = "closure_candidate"
             next_required_action = "major_closure_candidate"
         elif requested == "closed" and proposal.target_kind in ("small_chapter", "major_chapter"):
+            next_required_action = "dispatch_next_slice_plan_mode"
+        elif requested == "historical_closed":
+            # Bootstrap import (gated in _rejection): the target lands as a normal closed
+            # chapter and seeds the same next-slice dispatch obligation a receipted close would.
+            requested = "closed"
             next_required_action = "dispatch_next_slice_plan_mode"
         elif requested == "escalated_review_pending":
             next_required_action = "escalated_review"

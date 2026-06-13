@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+- One-click launch page (`scripts/launch_ui.py`): a local web form that drives the full
+  QUICKSTART flow — bootstrap render, MASTER_PLAN goal/first-slice injection, config
+  registration, sidecar load, detached `ao start`, optional first-slice seed poke. Every
+  step is fail-closed with a visible rollback anchor. Boundaries: config.yaml is
+  AUTO-CREATE ONLY (any existing content falls back to manual paste); MASTER_PLAN is
+  written once at creation from the operator's own words and never touched again;
+  localhost-only with Host/Origin checks, per-process CSRF token, and no-store responses.
+
 ## v0.3.0
 
 Engine forward-sync: ports the full downstream anti-stall / integrity commit series, bringing
